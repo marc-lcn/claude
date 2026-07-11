@@ -1222,7 +1222,7 @@ function LevelHeroCard({ level, weekSessions, bgImage }) {
                          radial-gradient(150% 150% at 100% 110%, ${ACCENT}3A, transparent 58%),
                          linear-gradient(160deg, #1A1F14 0%, #06070A 100%)`,
           }}>
-            <SceneComposition variant="obstacle" seed={seed} color={ACCENT} height={190} />
+            <SceneComposition variant="summit" seed={seed} color={ACCENT} height={190} />
           </div>
         )}
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 20%, rgba(5,6,7,0.35) 65%, rgba(5,6,7,0.9) 100%)' }} />
@@ -2163,6 +2163,19 @@ function WalkerSilhouette({ x = 210, y = 92, scale = 1, color, opacity = 0.8 }) 
   );
 }
 
+function VictorySilhouette({ x = 210, y = 92, scale = 1, color, opacity = 0.9 }) {
+  return (
+    <g transform={`translate(${x} ${y}) scale(${scale})`} opacity={opacity}>
+      <circle cx="0" cy="-40" r="6" fill={color} />
+      <path d="M 0 -34 C -2 -26 -1 -18 1 -11 L 4 -11 C 5 -19 4 -27 2 -34 Z" fill={color} />
+      <path d="M 1 -30 C -2 -36 -6 -43 -9 -49 C -10 -51 -7 -53 -6 -51 C -2 -45 2 -38 4 -32 Z" fill={color} />
+      <path d="M 2 -30 C 6 -37 11 -43 15 -48 C 16 -50 19 -48 18 -46 C 13 -40 8 -34 4 -28 Z" fill={color} />
+      <path d="M 1 -11 C -3 -4 -7 3 -8 11 C -8 13 -11 12 -10 10 C -9 3 -6 -5 -2 -12 Z" fill={color} />
+      <path d="M 3 -11 C 6 -4 8 3 8 11 C 8 13 11 12 10 10 C 10 3 8 -5 5 -12 Z" fill={color} />
+    </g>
+  );
+}
+
 // --- Environment layers ---
 function MountainLayers({ seed, color }) {
   const ridge = (baseY, jag, s) => {
@@ -2181,6 +2194,40 @@ function MountainLayers({ seed, color }) {
       <path d={ridge(118, 34, 1)} fill={color} opacity="0.14" />
       <path d={ridge(132, 24, 2)} fill={color} opacity="0.22" />
       <path d={ridge(150, 16, 3)} fill={color} opacity="0.34" />
+    </g>
+  );
+}
+
+function SummitScene({ seed, color }) {
+  const peak = (baseY, jag, s, tip) => {
+    let d = `M -10 170 L -10 ${baseY}`;
+    const pts = 6;
+    for (let i = 0; i <= pts; i++) {
+      const x = -10 + (i / pts) * 320;
+      const near = 1 - Math.abs(i / pts - tip) * 2;
+      const y = baseY - jag * (0.3 + rnd(seed + s, i) * 0.6) - Math.max(0, near) * jag * 1.6;
+      d += ` L ${x.toFixed(1)} ${y.toFixed(1)}`;
+    }
+    d += ` L 310 170 Z`;
+    return d;
+  };
+  const tipX = 0.42 + rnd(seed, 9) * 0.16;
+  return (
+    <g>
+      {/* Radiant sky burst behind the summit */}
+      <circle cx={-10 + tipX * 320} cy="34" r="70" fill={color} opacity="0.16" />
+      <circle cx={-10 + tipX * 320} cy="34" r="34" fill={color} opacity="0.22" />
+      {[0, 1, 2, 3, 4].map(i => {
+        const ang = (-70 + i * 35) * (Math.PI / 180);
+        const cx = -10 + tipX * 320, cy = 34;
+        return (
+          <line key={i} x1={cx} y1={cy} x2={cx + Math.cos(ang) * 130} y2={cy + Math.sin(ang) * 130}
+            stroke={color} strokeWidth="1.2" opacity="0.14" />
+        );
+      })}
+      <path d={peak(120, 40, 1, tipX)} fill={color} opacity="0.16" />
+      <path d={peak(138, 28, 2, tipX)} fill={color} opacity="0.26" />
+      <path d={peak(154, 18, 3, tipX)} fill={color} opacity="0.4" />
     </g>
   );
 }
@@ -2223,6 +2270,12 @@ function ObstacleScene({ seed, color }) {
         ))}
       </g>
       <path d={`M 30 8 C ${40 + zig} 40, ${20 - zig} 70, 34 100 C ${44 + zig} 128, 24 150, 32 168`} stroke={color} strokeWidth="3.2" fill="none" opacity="0.3" />
+      {/* Ember glow — a warm counterpoint to the category color, evokes torches/fire on the course */}
+      <circle cx={64 + zig * 2} cy="152" r="20" fill="#FF7A3D" opacity="0.16" />
+      <circle cx={64 + zig * 2} cy="152" r="8" fill="#FFB648" opacity="0.28" />
+      {[0, 1, 2].map(i => (
+        <circle key={`ember${i}`} cx={60 + zig * 2 + i * 7 - 7} cy={148 - i * 10 - (seed % 6)} r={1.6 - i * 0.3} fill="#FFB648" opacity={0.5 - i * 0.12} />
+      ))}
     </g>
   );
 }
@@ -2274,7 +2327,7 @@ function SceneComposition({ variant, seed, color, height }) {
 
   const figure = (() => {
     const fx = 190 + (seed % 40);
-    const fy = variant === 'gym' ? 118 : variant === 'obstacle' ? 96 : variant === 'calm' ? 122 : 140;
+    const fy = variant === 'gym' ? 118 : variant === 'obstacle' ? 96 : variant === 'calm' ? 122 : variant === 'summit' ? 88 : 140;
     const sc = 0.85 + rnd(seed, 11) * 0.35;
     if (variant === 'gym') return <LifterSilhouette x={150 + (seed % 20) - 10} y={132} scale={sc} color={color} />;
     if (variant === 'obstacle') return <ClimberSilhouette x={fx} y={128} scale={sc} color={color} />;
@@ -2282,6 +2335,7 @@ function SceneComposition({ variant, seed, color, height }) {
     if (variant === 'sunrise') return <WalkerSilhouette x={fx} y={fy} scale={sc} color={color} />;
     if (variant === 'track') return <RunnerSilhouette x={fx} y={132} scale={sc * 1.05} color={color} />;
     if (variant === 'avenue') return <RunnerSilhouette x={150} y={150} scale={sc * 1.1} color={color} />;
+    if (variant === 'summit') return <VictorySilhouette x={128 + (seed % 30)} y={fy} scale={sc * 1.1} color={color} />;
     return <RunnerSilhouette x={fx} y={140} scale={sc} color={color} />; // ridge / default course
   })();
 
@@ -2292,6 +2346,7 @@ function SceneComposition({ variant, seed, color, height }) {
     if (variant === 'sunrise') return <SunriseScene seed={seed} color={color} />;
     if (variant === 'track') return <TrackLanes seed={seed} color={color} />;
     if (variant === 'avenue') return <AvenueScene seed={seed} color={color} />;
+    if (variant === 'summit') return <SummitScene seed={seed} color={color} />;
     return <MountainLayers seed={seed} color={color} />; // ridge
   })();
 
