@@ -10,6 +10,15 @@ import {
 } from 'lucide-react';
 import { START_DATE, DAYS, MUSCULATION, COURSE_TYPES, RACES, PHYSICAL_GOALS } from './data/spartanData.js';
 
+// ---------- Cinematic scene photography (fal-ai / nano-banana-pro, shared style DNA) ----------
+import imgAccueil from './assets/scenes/accueil.jpg';
+import imgMusculation from './assets/scenes/musculation.jpg';
+import imgCourse from './assets/scenes/course.jpg';
+import imgSpartan from './assets/scenes/spartan.jpg';
+import imgRecuperation from './assets/scenes/recuperation.jpg';
+import imgProgression from './assets/scenes/progression.jpg';
+import imgProfil from './assets/scenes/profil.jpg';
+
 // ---------- Design tokens ----------
 const BG = '#050607';
 const CARD = '#12161C';
@@ -321,6 +330,29 @@ const CATEGORY_META = {
   spartan: { id: 'spartan', label: 'Spartan', color: CAT_SPARTAN, icon: Shield, benefitLabels: ['Grip', 'Gainage', 'Explosivité', 'Résistance mentale'] },
   mobilite: { id: 'mobilite', label: 'Mobilité', color: CAT_MOBILITE, icon: Sparkles, benefitLabels: ['Souplesse', 'Amplitude', 'Prévention blessures', 'Récupération'] },
   recuperation: { id: 'recuperation', label: 'Récupération', color: CAT_RECUP, icon: HeartPulse, benefitLabels: ['Récupération active', 'Circulation sanguine', 'Réduction du stress', 'Qualité du sommeil'] },
+};
+
+// Default cinematic cover per workout category — used whenever a session has no
+// per-session image of its own (see SessionCoverArt below).
+const CATEGORY_IMAGES = {
+  course: imgCourse,
+  muscu: imgMusculation,
+  spartan: imgSpartan,
+  mobilite: imgRecuperation,
+  recuperation: imgRecuperation,
+};
+
+// Same photo set, keyed by SceneComposition variant name — reused by cards that pick
+// their scene by mood (e.g. DailyInsightCard) rather than by workout category.
+const VARIANT_IMAGE = {
+  ridge: imgCourse,
+  gym: imgMusculation,
+  obstacle: imgSpartan,
+  sunrise: imgRecuperation,
+  calm: imgRecuperation,
+  summit: imgProgression,
+  track: imgCourse,
+  avenue: imgCourse,
 };
 
 const DIFFICULTY_META = {
@@ -1205,7 +1237,7 @@ function PeriodFilter({ value, onChange }) {
 
 // Architecture note: pass `bgImage` once a real Spartan-level illustration exists —
 // swaps in for the generated scene backdrop with no other change.
-function LevelHeroCard({ level, weekSessions, bgImage }) {
+function LevelHeroCard({ level, weekSessions, bgImage = imgProgression }) {
   const seed = hashSeed('level-hero-' + level.level);
   const pct = Math.round((level.xpIntoLevel / level.xpPerLevel) * 100);
   const animatedXp = useCountUp(level.xpIntoLevel, 1100);
@@ -2378,11 +2410,20 @@ function SessionCoverArt({ session, height = 140, rounded = 18, showLabel = true
   // Future-proofing: if a real image/video asset exists on the session, use it directly —
   // everything downstream (cards, hero, recommendations, favorites) already renders via this
   // single component, so dropping in real media never requires touching call sites.
-  if (session.image) {
+  const realImage = session.image || CATEGORY_IMAGES[session.category];
+  if (realImage) {
     return (
       <div style={{ position: 'relative', width: '100%', height, borderRadius: rounded, overflow: 'hidden' }}>
-        <img src={session.image} alt={session.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <img src={realImage} alt={session.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 40%, rgba(5,6,7,0.6) 100%)' }} />
+        {showLabel && (
+          <div style={{ position: 'absolute', left: 14, top: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ width: 26, height: 26, borderRadius: 9, background: 'rgba(5,6,7,0.55)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon size={13} color={cat.color} />
+            </div>
+            <span style={{ fontSize: 10.5, fontWeight: 800, color: cat.color, textTransform: 'uppercase', letterSpacing: '0.05em', textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}>{cat.label}</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -2481,7 +2522,7 @@ function WhySessionCard({ day, session }) {
 // ---------- Profil: Hero, Objectifs, Résumé ----------
 // Architecture note: pass `heroImage` once a real cinematic portrait/scene exists —
 // it replaces the generated backdrop with no other change to this component.
-function ProfileHero({ level, stats, heroImage }) {
+function ProfileHero({ level, stats, heroImage = imgProfil }) {
   const seed = hashSeed('profile-hero');
   const animatedXp = useCountUp(level.xpIntoLevel, 1100);
   const remaining = level.xpPerLevel - level.xpIntoLevel;
@@ -2558,17 +2599,22 @@ function ObjectiveRaceRow({ race }) {
   const variant = RACE_SCENE_VARIANT[race.name] || 'ridge';
   const color = variant === 'avenue' ? CAT_COURSE : variant === 'obstacle' ? CAT_SPARTAN : CAT_COURSE;
   const seed = hashSeed(race.name + '-obj');
+  const image = race.image || VARIANT_IMAGE[variant];
   return (
     <div style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', minHeight: 84 }}>
-      <div style={{
-        position: 'absolute', inset: 0,
-        background: `radial-gradient(60% 80% at 15% 10%, rgba(255,255,255,0.08), transparent 60%),
-                     radial-gradient(130% 140% at 100% 105%, ${color}30, transparent 58%),
-                     linear-gradient(155deg, #171B22 0%, #08090B 100%)`,
-      }}>
-        <SceneComposition variant={variant} seed={seed} color={color} height={84} />
-      </div>
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(100deg, rgba(5,6,7,0.6) 0%, rgba(5,6,7,0.2) 65%)' }} />
+      {image ? (
+        <img src={image} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+      ) : (
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: `radial-gradient(60% 80% at 15% 10%, rgba(255,255,255,0.08), transparent 60%),
+                       radial-gradient(130% 140% at 100% 105%, ${color}30, transparent 58%),
+                       linear-gradient(155deg, #171B22 0%, #08090B 100%)`,
+        }}>
+          <SceneComposition variant={variant} seed={seed} color={color} height={84} />
+        </div>
+      )}
+      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(100deg, rgba(5,6,7,0.68) 0%, rgba(5,6,7,0.32) 65%)' }} />
       <div style={{ position: 'relative', padding: '12px 14px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 12.5, fontWeight: 800, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>{race.emoji} {race.name}</span>
@@ -3238,10 +3284,11 @@ function DailyInsightCard({ dateISO, bgImage }) {
   const meta = INSIGHT_CATEGORIES[insight.cat];
   const seed = hashSeed(dateISO);
   const sceneVariant = insight.cat === 'course' ? 'ridge' : insight.cat === 'muscu' ? 'gym' : insight.cat === 'mental' || insight.cat === 'histoire' ? 'obstacle' : insight.cat === 'recup' || insight.cat === 'nutrition' ? 'sunrise' : 'calm';
+  const image = bgImage || VARIANT_IMAGE[sceneVariant];
   return (
     <div style={{ position: 'relative', borderRadius: 20, overflow: 'hidden', minHeight: 108 }}>
-      {bgImage ? (
-        <img src={bgImage} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.55 }} />
+      {image ? (
+        <img src={image} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.55 }} />
       ) : (
         <div style={{ position: 'absolute', inset: 0, opacity: 0.5 }}>
           <SceneComposition variant={sceneVariant} seed={seed} color={meta.color} height={108} />
@@ -3299,11 +3346,12 @@ function ObjectiveCard({ race, daysToRace, pct }) {
   const variant = RACE_SCENE_VARIANT[race.name] || 'ridge';
   const color = variant === 'avenue' ? CAT_COURSE : variant === 'obstacle' ? CAT_SPARTAN : CAT_COURSE;
   const seed = hashSeed(race.name);
+  const image = race.image || VARIANT_IMAGE[variant];
   return (
     <div style={{ position: 'relative', borderRadius: 20, overflow: 'hidden' }}>
       <div style={{ position: 'relative', height: 108 }}>
-        {race.image ? (
-          <img src={race.image} alt={race.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        {image ? (
+          <img src={image} alt={race.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         ) : (
           <div style={{
             position: 'absolute', inset: 0,
@@ -4574,10 +4622,17 @@ export default function App() {
             </button>
           </div>
 
-          {/* Greeting */}
-          <div style={{ marginTop: 18 }}>
-            <div style={{ fontSize: 23, fontWeight: 800 }}>Bonjour Marc 👋</div>
-            <div style={{ fontSize: 13.5, color: TEXT_SOFT, marginTop: 3 }}>Aujourd’hui est un excellent jour pour devenir plus fort.</div>
+          {/* Hero cinématique — première impression premium à l'ouverture de l'app */}
+          <div className="spartan-fade-in" style={{ marginTop: 16, position: 'relative', height: 232, borderRadius: 26, overflow: 'hidden', boxShadow: '0 18px 40px -14px rgba(0,0,0,0.55)' }}>
+            <div className="spartan-kenburns" style={{ position: 'absolute', inset: 0 }}>
+              <img src={imgAccueil} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            </div>
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(5,6,7,0.05) 0%, rgba(5,6,7,0.28) 45%, rgba(5,6,7,0.94) 100%)' }} />
+            <div style={{ position: 'absolute', inset: 0, boxShadow: 'inset 0 0 60px 14px rgba(0,0,0,0.35)' }} />
+            <div style={{ position: 'absolute', left: 20, right: 20, bottom: 18 }}>
+              <div style={{ fontSize: 23, fontWeight: 800, color: '#fff', textShadow: '0 2px 10px rgba(0,0,0,0.6)' }}>Bonjour Marc 👋</div>
+              <div style={{ fontSize: 13.5, color: '#D6D9DD', marginTop: 3, textShadow: '0 1px 6px rgba(0,0,0,0.5)' }}>Aujourd’hui est un excellent jour pour devenir plus fort.</div>
+            </div>
           </div>
 
           {/* Top carousel */}
