@@ -1,0 +1,13 @@
+{
+  "appId": "app.spartan365.mobile",
+  "appName": "Spartan 365",
+  "webDir": "dist",
+  "backgroundColor": "#050607",
+  "android": {
+    "backgroundColor": "#050607",
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}
