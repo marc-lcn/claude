@@ -6,7 +6,7 @@ import {
   Battery, Gauge, Play, Flag, Timer, Search, SlidersHorizontal, Star,
   ArrowLeft, MoreHorizontal, Video, MessageSquare, BarChart3, Sparkles,
   Backpack, Footprints, Droplet, Watch, PlusCircle, Send,
-  Mountain, Sunrise, Zap, Wind, Lock, Volume2, Vibrate, CloudOff, Download, Upload, Trash2
+  Mountain, Sunrise, Zap, Wind, Lock, Volume2, Vibrate, CloudOff, Download, Upload, Trash2, Menu
 } from 'lucide-react';
 import { START_DATE, DAYS, MUSCULATION, COURSE_TYPES, RACES, PHYSICAL_GOALS } from './data/spartanData.js';
 
@@ -18,6 +18,8 @@ import imgSpartan from './assets/scenes/spartan.jpg';
 import imgRecuperation from './assets/scenes/recuperation.jpg';
 import imgProgression from './assets/scenes/progression.jpg';
 import imgProfil from './assets/scenes/profil.jpg';
+import imgSunrise from './assets/scenes/sunrise.jpg';
+import imgRoutine from './assets/scenes/routine.jpg';
 
 // ---------- Design tokens ----------
 const BG = '#050607';
@@ -355,6 +357,23 @@ const VARIANT_IMAGE = {
   avenue: imgCourse,
 };
 
+// Home hero — auto-rotating carousel of the full cinematic photo set.
+const HERO_IMAGES = [imgAccueil, imgMusculation, imgSpartan, imgSunrise, imgRecuperation, imgCourse, imgProgression];
+
+// Per-race accent for the "Mes objectifs" home cards — deliberately distinct per race
+// rather than tied to CATEGORY_META, since all three races are conceptually "course"
+// but the mock needs three separately readable colors. Spartan Ultra uses a mountain
+// icon (never the running pictogram) per spec.
+const RACE_ACCENT = {
+  'Semi-Marathon Saint-Jean-de-Luz': { color: CAT_COURSE, icon: PersonStanding },
+  'Marathon de Paris': { color: '#2F7BFF', icon: PersonStanding },
+  'Spartan Ultra Morzine': { color: '#8B3FF0', icon: Mountain },
+};
+
+// "Programme du jour" thumbnail per session type — routine (daily checklist) gets its
+// own dedicated photo, everything else reuses the category set above.
+const PROGRAM_ITEM_IMAGE = { routine: imgRoutine, muscu: imgMusculation, course: imgCourse };
+
 const DIFFICULTY_META = {
   debutant: { label: 'Débutant', color: '#7FE24D', emoji: '🟢' },
   intermediaire: { label: 'Intermédiaire', color: '#E8D94C', emoji: '🟡' },
@@ -651,33 +670,7 @@ const SESSION_LIBRARY = [
   ...buildRecuperationSessions(),
 ];
 
-function ProgramCard({ icon: Icon, iconBg, iconColor, kicker, title, minutes, tag, onClick }) {
-  return (
-    <button onClick={onClick} className="spartan-tap" style={{
-      width: '100%', display: 'flex', alignItems: 'center', gap: 14,
-      background: CARD, border: `1px solid ${CARD_BORDER}`, borderRadius: 20,
-      padding: '16px 16px', cursor: 'pointer', textAlign: 'left',
-    }}>
-      <div style={{
-        width: 52, height: 52, borderRadius: 16, background: iconBg,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-      }}>
-        <Icon size={24} color={iconColor} />
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, color: TEXT_SOFT, marginBottom: 2 }}>{kicker}</div>
-        <div style={{ fontSize: 17, fontWeight: 700, color: TEXT, marginBottom: 4 }}>{title}</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12.5, color: TEXT_SOFT }}>
-          <span>⏱ {minutes} min</span>
-          <span>{tag}</span>
-        </div>
-      </div>
-      <ChevronRight size={20} color={TEXT_FAINT} />
-    </button>
-  );
-}
-
-function DetailModal({ onClose, title, kicker, children }) {
+function DetailModal({ onClose, title, kicker, children, footer }) {
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(2,3,4,0.72)', backdropFilter: 'blur(3px)',
@@ -699,6 +692,7 @@ function DetailModal({ onClose, title, kicker, children }) {
           </button>
         </div>
         {children}
+        {footer}
       </div>
     </div>
   );
@@ -3744,118 +3738,6 @@ function MiniBar({ pct, color, glow }) {
   );
 }
 
-function TopCarousel({ day, completions, level, xpTotal }) {
-  const scrollRef = React.useRef(null);
-  const [active, setActive] = useState(0);
-  const week = weeklySessions(day, completions);
-  const daysToMorzine = daysBetween(todayISO(), RACES[2].date);
-  const morzinePct = raceProgress(RACES[2]);
-
-  const onScroll = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const cardW = el.firstChild ? el.firstChild.offsetWidth + 12 : 1;
-    setActive(Math.round(el.scrollLeft / cardW));
-  };
-
-  const cardStyle = {
-    flex: '0 0 85%', scrollSnapAlign: 'start', background: CARD, border: `1px solid ${CARD_BORDER}`,
-    borderRadius: 22, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 10, minHeight: 190,
-  };
-  const kickerStyle = { fontSize: 11, color: TEXT_SOFT, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 6 };
-
-  return (
-    <div>
-      <div ref={scrollRef} onScroll={onScroll} style={{
-        display: 'flex', gap: 12, overflowX: 'auto', scrollSnapType: 'x mandatory',
-        WebkitOverflowScrolling: 'touch', paddingBottom: 2, marginLeft: -20, marginRight: -20, paddingLeft: 20, paddingRight: 20,
-      }}>
-        {/* Carte 1 — Défi & Objectif */}
-        <div style={cardStyle}>
-          <div style={kickerStyle}><Flame size={13} color={ACCENT} /> Défi &amp; objectif</div>
-          <div>
-            <div style={{ fontSize: 11.5, color: TEXT_SOFT }}>Jour du défi</div>
-            <div style={{ fontSize: 30, fontWeight: 800 }}>{day.jour} <span style={{ fontSize: 15, color: TEXT_SOFT, fontWeight: 600 }}>/ 366</span></div>
-          </div>
-          <div style={{ fontSize: 12, color: TEXT_SOFT }}>Objectif principal</div>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>{RACES[2].name}</div>
-          <div style={{ fontSize: 12, color: ACCENT, fontWeight: 700, marginTop: -6 }}>J-{daysToMorzine}</div>
-          <MiniBar pct={morzinePct} />
-        </div>
-
-        {/* Carte 2 — Progression */}
-        <div style={cardStyle}>
-          <div style={kickerStyle}><TrendingUp size={13} color={ACCENT} /> Progression semaine</div>
-          <div>
-            <div style={{ fontSize: 11.5, color: TEXT_SOFT }}>Séances complétées</div>
-            <div style={{ fontSize: 30, fontWeight: 800 }}>{week.done} <span style={{ fontSize: 15, color: TEXT_SOFT, fontWeight: 600 }}>/ {week.total}</span></div>
-          </div>
-          <MiniBar pct={(week.done / Math.max(1, week.total)) * 100} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 14, background: '#1B2129', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
-              <span style={{ fontSize: 8.5, color: TEXT_SOFT }}>NIV.</span>
-              <span style={{ fontSize: 16, fontWeight: 800, color: ACCENT }}>{level.level}</span>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>{level.name}</div>
-              <div style={{ fontSize: 11, color: TEXT_SOFT }}>{level.xpIntoLevel} / {level.xpPerLevel} XP</div>
-              <MiniBar pct={(level.xpIntoLevel / level.xpPerLevel) * 100} />
-            </div>
-          </div>
-        </div>
-
-        {/* Carte 3 — Santé */}
-        <div style={cardStyle}>
-          <div style={kickerStyle}>❤️ Santé aujourd'hui</div>
-          {[
-            ['Sommeil', '7h45', 'Bon'],
-            ['Body Battery', '78 / 100', 'Élevé'],
-            ['FC repos', '48 bpm', 'Bas'],
-            ['Poids', '78,4 kg', 'Stable'],
-          ].map(([l, v, s]) => (
-            <div key={l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 12.5, color: TEXT_SOFT }}>{l}</span>
-              <span style={{ fontSize: 13, fontWeight: 700 }}>{v} <span style={{ fontSize: 11, color: ACCENT, fontWeight: 600, marginLeft: 4 }}>{s}</span></span>
-            </div>
-          ))}
-          <div style={{ fontSize: 10.5, color: TEXT_FAINT, marginTop: 2 }}>Données Garmin — à venir</div>
-        </div>
-
-        {/* Carte 4 — Records */}
-        <div style={cardStyle}>
-          <div style={kickerStyle}><Trophy size={13} color={ACCENT} /> Records</div>
-          {RECORDS.map(r => (
-            <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 12.5, color: TEXT_SOFT }}>{r.label}</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: TEXT_FAINT }}>{r.value} <span style={{ fontSize: 10.5, color: TEXT_FAINT, fontWeight: 500 }}>{r.status}</span></span>
-            </div>
-          ))}
-          <div style={{ fontSize: 12, color: ACCENT, fontWeight: 700, marginTop: 4 }}>Voir tous les records ›</div>
-        </div>
-
-        {/* Carte 5 — Objectifs */}
-        <div style={cardStyle}>
-          <div style={kickerStyle}><Target size={13} color={ACCENT} /> Objectifs</div>
-          {RACES.map(r => {
-            const d = daysBetween(todayISO(), r.date);
-            const pct = raceProgress(r);
-            return (
-              <div key={r.name} style={{ marginBottom: 2 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
-                  <span style={{ color: TEXT }}>{r.emoji} {r.name}</span>
-                  <span style={{ color: ACCENT, fontWeight: 700 }}>{d >= 0 ? `J-${d}` : '—'}</span>
-                </div>
-                <div style={{ marginTop: 4 }}><MiniBar pct={pct} /></div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      <CarouselDots count={5} active={active} />
-    </div>
-  );
-}
-
 // ---------- Séances: session detail page ----------
 function SessionDetailTabs({ active, onChange }) {
   const tabs = [
@@ -4530,6 +4412,185 @@ function SessionsScreen({ completions, favorites, toggleFavorite, weeklyRecapDis
   );
 }
 
+// ---------- Home screen (Accueil) — hero, objectifs, niveau, programme, semaine ----------
+function HeroCarousel({ images, intervalMs = 5000 }) {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setIndex(i => (i + 1) % images.length), intervalMs);
+    return () => clearInterval(id);
+  }, [images.length, intervalMs]);
+  return (
+    <>
+      <div style={{ position: 'absolute', inset: 0 }}>
+        {images.map((src, i) => (
+          <img key={src} src={src} alt="" className={i === index ? 'spartan-kenburns' : ''} style={{
+            position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+            opacity: i === index ? 1 : 0, transition: 'opacity 1.2s ease',
+          }} />
+        ))}
+      </div>
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 78, display: 'flex', justifyContent: 'center', gap: 6, zIndex: 1 }}>
+        {images.map((_, i) => (
+          <div key={i} style={{
+            width: i === index ? 18 : 6, height: 6, borderRadius: 3,
+            background: i === index ? ACCENT : 'rgba(255,255,255,0.35)', transition: 'width 0.3s ease, background 0.3s ease',
+          }} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+function HomeObjectiveCard({ race }) {
+  const accent = RACE_ACCENT[race.name] || { color: CAT_COURSE, icon: PersonStanding };
+  const Icon = accent.icon;
+  const d = daysBetween(todayISO(), race.date);
+  const pct = raceProgress(race);
+  const isUltra = race.name === 'Spartan Ultra Morzine';
+  const weeksTotal = Math.max(1, Math.ceil(daysBetween(START_DATE, race.date) / 7));
+  const weeksElapsed = Math.max(0, Math.min(weeksTotal, Math.floor(daysBetween(START_DATE, todayISO()) / 7)));
+  return (
+    <div style={{ flex: '1 1 0', minWidth: 0, overflow: 'hidden', background: CARD, borderRadius: 24, padding: '15px 11px', boxShadow: '0 10px 26px -18px rgba(0,0,0,0.6)' }}>
+      <div style={{ width: 38, height: 38, borderRadius: '50%', background: accent.color + '26', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Icon size={17} color={accent.color} />
+      </div>
+      <div style={{ fontSize: 11.5, fontWeight: 800, color: TEXT, lineHeight: 1.22, marginTop: 11, minHeight: 28 }}>{race.name}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8, fontSize: 10, color: TEXT_SOFT }}>
+        <CalendarDays size={10} /> {dateFromISO(race.date).toLocaleDateString('fr-FR')}
+      </div>
+      <div style={{ marginTop: 11 }}>
+        <div style={{ fontSize: 9.5, color: accent.color, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Objectif</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, marginTop: 3 }}>
+          <span style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>{race.target}</span>
+          <span style={{ fontSize: 9.5, fontWeight: 800, color: accent.color, border: `1px solid ${accent.color}55`, borderRadius: 10, padding: '2.5px 6px', whiteSpace: 'nowrap' }}>{d >= 0 ? `J-${d}` : 'Passé'}</span>
+        </div>
+      </div>
+      <div style={{ marginTop: 11 }}><MiniBar pct={pct} color={accent.color} /></div>
+      <div style={{ fontSize: 9.5, color: TEXT_FAINT, marginTop: 6 }}>
+        {isUltra ? `${pct}% de préparation` : `${weeksElapsed} / ${weeksTotal} semaines`}
+      </div>
+    </div>
+  );
+}
+
+function LevelMiniCard({ level }) {
+  const pct = Math.round((level.xpIntoLevel / level.xpPerLevel) * 100);
+  const remaining = level.xpPerLevel - level.xpIntoLevel;
+  return (
+    <div style={{ position: 'relative', flex: 1, minWidth: 0, background: CARD, borderRadius: 24, padding: '16px 14px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <img src={imgProgression} alt="" style={{
+        position: 'absolute', right: -18, bottom: -12, width: '76%', height: '56%', objectFit: 'cover', borderRadius: 18,
+        opacity: 0.24, filter: 'grayscale(1)',
+        maskImage: 'linear-gradient(115deg, transparent 15%, #000 62%)', WebkitMaskImage: 'linear-gradient(115deg, transparent 15%, #000 62%)',
+      }} />
+      <Flag size={12} color={ACCENT} style={{ position: 'absolute', right: 22, bottom: 44 }} />
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, fontWeight: 800, color: ACCENT, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        <TrendingUp size={13} /> Mon niveau
+      </div>
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, marginTop: 14 }}>
+        <div style={{ position: 'relative', width: 62, height: 56, flexShrink: 0 }}>
+          <svg viewBox="0 0 100 92" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+            <polygon points="27,3 73,3 100,46 73,89 27,89 0,46" fill="none" stroke={ACCENT} strokeWidth="4" />
+          </svg>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: ACCENT }}>{level.level}</div>
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>{level.xpIntoLevel.toLocaleString('fr-FR')} <span style={{ fontSize: 10.5, color: TEXT_SOFT, fontWeight: 600 }}>XP</span></div>
+          <div style={{ marginTop: 6, width: 84 }}><MiniBar pct={pct} glow /></div>
+          <div style={{ fontSize: 9.5, color: TEXT_SOFT, marginTop: 4 }}>/ {level.xpPerLevel.toLocaleString('fr-FR')} XP</div>
+        </div>
+      </div>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: ACCENT, marginTop: 10 }}>Niveau actuel</div>
+      <div style={{ position: 'relative', borderTop: `1px solid ${CARD_BORDER}`, marginTop: 12, paddingTop: 10 }}>
+        <div style={{ fontSize: 11, color: TEXT_SOFT }}>Prochain niveau <b style={{ color: TEXT }}>{level.level + 1}</b></div>
+        <div style={{ fontSize: 11, color: TEXT_SOFT, marginTop: 2 }}>Encore <b style={{ color: ACCENT }}>{remaining.toLocaleString('fr-FR')} XP</b></div>
+      </div>
+    </div>
+  );
+}
+
+function ProgramDayCard({ items, isDone, onOpenItem }) {
+  return (
+    <div style={{ flex: 1.35, minWidth: 0, background: CARD, borderRadius: 24, padding: '16px 14px 4px 14px', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, fontWeight: 800, color: ACCENT, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+        <CalendarDays size={13} /> Programme du jour
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {items.map((it, i) => (
+          <button key={it.type} onClick={() => onOpenItem(it.type)} className="spartan-tap" style={{
+            display: 'flex', alignItems: 'center', gap: 11, width: '100%', background: 'none', border: 'none',
+            padding: '10px 0', borderTop: i > 0 ? `1px solid ${CARD_BORDER}` : 'none', cursor: 'pointer', textAlign: 'left',
+          }}>
+            <div style={{ width: 50, height: 50, borderRadius: 14, overflow: 'hidden', flexShrink: 0 }}>
+              <img src={it.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, lineHeight: 1.2 }}>{it.title}</div>
+              {it.subtitle && <div style={{ fontSize: 10.5, color: TEXT_SOFT, marginTop: 2 }}>{it.subtitle}</div>}
+              <div style={{ fontSize: 10.5, color: TEXT_SOFT, marginTop: it.subtitle ? 1 : 3, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Timer size={10} /> {it.minutes} min · {it.tag}
+              </div>
+            </div>
+            <div style={{ position: 'relative', width: 32, height: 32, flexShrink: 0 }}>
+              <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: `conic-gradient(${it.color} ${isDone ? 360 : 0}deg, #1B2129 0deg)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: 25, height: 25, borderRadius: '50%', background: CARD, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 800, color: TEXT }}>{isDone ? 100 : 0}%</div>
+              </div>
+            </div>
+            <ChevronRight size={15} color={TEXT_FAINT} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WeekStatCard({ icon: Icon, color, value, label, pct }) {
+  return (
+    <div style={{ background: CARD, borderRadius: 18, padding: '12px 10px', minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <Icon size={14} color={color} />
+        <span style={{ fontSize: 14, fontWeight: 800, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</span>
+      </div>
+      <div style={{ fontSize: 9, color: TEXT_SOFT, marginTop: 6, lineHeight: 1.25 }}>{label}</div>
+      <div style={{ marginTop: 8 }}><MiniBar pct={pct} color={color} /></div>
+    </div>
+  );
+}
+
+// Maps a day to the two-line label shown on its weekly mini-card. Deliberately reuses
+// dayPrimaryCategory (the same classifier driving the Planning calendar pictograms) so a
+// given day always reads the same way across the app.
+function dayCardLabels(day) {
+  const cat = dayPrimaryCategory(day);
+  if (cat.key === 'course') return ['Course à pied', (day.course || '').replace(/^[^\s]+\s/, '')];
+  if (cat.key === 'muscu') return ['Musculation', (day.seanceMuscu || '').replace(/^[^\s]+\s/, '')];
+  if (cat.key === 'recuperation' || cat.key === 'mobilite') return ['Récupération', 'Mobilité'];
+  if (cat.key === 'race') return ['Objectif du jour', RACE_SHORT[day.course] || 'Course'];
+  return ['Spartan Race', 'Technique'];
+}
+
+function WeekDayMiniCard({ day, isToday, done }) {
+  const cat = dayPrimaryCategory(day);
+  const [l1, l2] = dayCardLabels(day);
+  const label = isToday ? 'Aujourd’hui' : (() => {
+    const s = dateFromISO(day.date).toLocaleDateString('fr-FR', { weekday: 'long' });
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  })();
+  return (
+    <div style={{
+      flex: '0 0 132px', background: CARD, borderRadius: 20, padding: '13px 12px',
+      border: isToday ? `1.5px solid ${ACCENT}` : `1px solid ${CARD_BORDER}`,
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: isToday ? ACCENT : TEXT_SOFT, marginBottom: 10 }}>{label}</div>
+      <cat.icon size={21} color={cat.color} />
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: TEXT, marginTop: 10, lineHeight: 1.3 }}>{l1}<br />{l2}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
+        <span style={{ fontSize: 9.5, color: TEXT_FAINT }}>{done ? '100%' : '0%'}</span>
+        <div style={{ flex: 1 }}><MiniBar pct={done ? 100 : 0} color={cat.color} /></div>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   // Runs once per load: stamps a fresh install with the current schema version, or upgrades
@@ -4586,6 +4647,73 @@ export default function App() {
   const fatigue = FATIGUE_INFO[day.indicateur] || FATIGUE_INFO['🟢 Faible'];
   const chargeLabel = CHARGE_LABEL[day.indicateur] || CHARGE_LABEL['🟢 Faible'];
 
+  // "Programme du jour" home card — one row per session scheduled today, always image-matched
+  // to its real type (never a running photo on a strength row, etc. — see PROGRAM_ITEM_IMAGE).
+  const programItems = useMemo(() => {
+    const list = [];
+    const routineIt = est.items.find(i => i.type === 'routine');
+    if (routineIt) {
+      list.push({
+        type: 'routine', title: 'Routine journalière', subtitle: `${est.routineCount} exercices`,
+        minutes: routineIt.min, tag: isDone ? 'Terminé' : 'À faire', image: PROGRAM_ITEM_IMAGE.routine, color: CAT_SPARTAN,
+      });
+    }
+    if (hasMuscu) {
+      const muscuIt = est.items.find(i => i.type === 'muscu');
+      list.push({
+        type: 'muscu', title: `Musculation ${day.seanceMuscu.replace(/^[^\s]+\s/, '')}`,
+        minutes: muscuIt?.min, tag: isDone ? 'Terminé' : 'À faire', image: PROGRAM_ITEM_IMAGE.muscu, color: CAT_MUSCU,
+      });
+    }
+    if (day.course) {
+      const courseIt = est.items.find(i => i.type === 'course');
+      list.push({
+        type: 'course', title: day.course.replace(/^[^\s]+\s/, ''),
+        minutes: courseIt?.min, tag: isDone ? 'Terminé' : 'À faire', image: PROGRAM_ITEM_IMAGE.course, color: CAT_COURSE,
+      });
+    }
+    return list;
+  }, [est, hasMuscu, day, isDone]);
+
+  // Home "start session" CTA always targets the day's main session: musculation first,
+  // then running, then the daily routine — mirroring how the program screens prioritize them.
+  const primaryItem = hasMuscu ? 'muscu' : day.course ? 'course' : 'routine';
+  const primaryLabel = hasMuscu ? day.seanceMuscu.replace(/^[^\s]+\s/, '') : day.course ? day.course.replace(/^[^\s]+\s/, '') : `${est.routineCount} exercices`;
+  const muscleGroups = hasMuscu && muscuExercises ? [...new Set(muscuExercises.map(e => e.cible))].slice(0, 3).join(' / ') : '';
+  const ctaSubtitle = muscleGroups ? `${primaryLabel} – ${muscleGroups}` : primaryLabel;
+
+  const doneToggleFooter = (
+    <button onClick={() => { toggleDay(day.date); setOpenDetail(null); }} disabled={!loaded} className="spartan-tap" style={{
+      width: '100%', marginTop: 18, padding: '16px 0', borderRadius: 18, border: 'none',
+      cursor: loaded ? 'pointer' : 'default', background: isDone ? '#1B2129' : ACCENT,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+      color: isDone ? ACCENT : '#0A0C0E', fontSize: 15, fontWeight: 800,
+    }}>
+      <CheckCircle2 size={18} /> {isDone ? 'Journée terminée' : 'Marquer la journée comme faite'}
+    </button>
+  );
+
+  // "Aperçu de ta semaine" home card — reuses the same completion/category data as the
+  // Planning calendar so the numbers never disagree between screens.
+  const weekOverview = useMemo(() => {
+    const weekDays = getWeekDays(day.semaine);
+    const trainingDays = weekDays.filter(d => !dayStatus(d).isRest);
+    const doneTrainingDays = trainingDays.filter(d => completions[d.date] && completions[d.date].fait);
+    const doneAllDays = weekDays.filter(d => completions[d.date] && completions[d.date].fait);
+    const kcal = doneAllDays.reduce((s, d) => s + estimateSession(d).totalKcal, 0);
+    const minutes = doneAllDays.reduce((s, d) => s + estimateSession(d).totalMin, 0);
+    const pct = trainingDays.length ? Math.round((doneTrainingDays.length / trainingDays.length) * 100) : 0;
+    const prevWeekDays = day.semaine > 1 ? getWeekDays(day.semaine - 1) : [];
+    const prevTraining = prevWeekDays.filter(d => !dayStatus(d).isRest);
+    const prevDone = prevTraining.filter(d => completions[d.date] && completions[d.date].fait);
+    const prevPct = prevTraining.length ? Math.round((prevDone.length / prevTraining.length) * 100) : 0;
+    const upcoming = weekDays.filter(d => d.date >= day.date).slice(0, 5);
+    return {
+      plannedDone: doneTrainingDays.length, plannedTotal: trainingDays.length, pct,
+      kcal, hours: Math.floor(minutes / 60), mins: minutes % 60, delta: pct - prevPct, upcoming,
+    };
+  }, [day, completions]);
+
   return (
     <div style={{ minHeight: '100vh', background: BG, fontFamily: FONT, color: TEXT, paddingBottom: 90 }}>
       <style>{`
@@ -4611,22 +4739,27 @@ export default function App() {
 
           {/* Top bar */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 30, height: 30, borderRadius: 10, background: '#1B2129', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Shield size={16} color={ACCENT} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }} aria-label="Menu">
+                <Menu size={20} color={TEXT} />
+              </button>
+              <div style={{ width: 34, height: 34, borderRadius: '50%', background: ACCENT, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Shield size={17} color="#0A0C0E" />
               </div>
-              <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: '0.06em' }}>SPARTAN 365</span>
+              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.05 }}>
+                <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: '0.08em', color: TEXT }}>SPARTAN</span>
+                <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: '0.08em', color: ACCENT }}>365</span>
+              </div>
             </div>
-            <button style={{ width: 36, height: 36, borderRadius: 18, background: CARD, border: `1px solid ${CARD_BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <button style={{ position: 'relative', width: 36, height: 36, borderRadius: 18, background: CARD, border: `1px solid ${CARD_BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               <Bell size={15} color={TEXT_SOFT} />
+              <span style={{ position: 'absolute', top: 7, right: 8, width: 7, height: 7, borderRadius: '50%', background: ACCENT, border: '1.5px solid #050607' }} />
             </button>
           </div>
 
-          {/* Hero cinématique — première impression premium à l'ouverture de l'app */}
+          {/* Hero cinématique — carousel photo rotatif, première impression premium à l'ouverture de l'app */}
           <div className="spartan-fade-in" style={{ marginTop: 16, position: 'relative', height: 232, borderRadius: 26, overflow: 'hidden', boxShadow: '0 18px 40px -14px rgba(0,0,0,0.55)' }}>
-            <div className="spartan-kenburns" style={{ position: 'absolute', inset: 0 }}>
-              <img src={imgAccueil} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            </div>
+            <HeroCarousel images={HERO_IMAGES} />
             <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(5,6,7,0.05) 0%, rgba(5,6,7,0.28) 45%, rgba(5,6,7,0.94) 100%)' }} />
             <div style={{ position: 'absolute', inset: 0, boxShadow: 'inset 0 0 60px 14px rgba(0,0,0,0.35)' }} />
             <div style={{ position: 'absolute', left: 20, right: 20, bottom: 18 }}>
@@ -4635,112 +4768,52 @@ export default function App() {
             </div>
           </div>
 
-          {/* Top carousel */}
-          <div style={{ marginTop: 18 }}>
-            <TopCarousel day={day} completions={completions} level={level} />
-          </div>
-
-          {/* Programme du jour */}
+          {/* Mes objectifs */}
           <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span style={{ fontSize: 12.5, color: TEXT_SOFT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Aujourd’hui</span>
-            <span style={{ fontSize: 11, color: fatigue.color, background: fatigue.color + '1A', padding: '4px 10px', borderRadius: 10, fontWeight: 700 }}>{chargeLabel}</span>
+            <span style={{ fontSize: 12.5, color: TEXT_SOFT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Mes objectifs</span>
+            <button onClick={() => setTab('progression')} style={{ background: 'none', border: 'none', color: ACCENT, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>Voir tout</button>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {day.course && (
-              <ProgramCard
-                icon={PersonStanding} iconBg={CAT_COURSE + '1F'} iconColor={CAT_COURSE}
-                kicker="Course" title={day.course.replace(/^[^\s]+\s/, '')}
-                minutes={est.items.find(i => i.type === 'course')?.min}
-                tag=""
-                onClick={() => setOpenDetail('course')}
-              />
-            )}
-            {hasMuscu && (
-              <ProgramCard
-                icon={Dumbbell} iconBg={CAT_MUSCU + '1F'} iconColor={CAT_MUSCU}
-                kicker="Musculation" title={day.seanceMuscu.replace(/^[^\s]+\s/, '')}
-                minutes={est.items.find(i => i.type === 'muscu')?.min}
-                tag=""
-                onClick={() => setOpenDetail('muscu')}
-              />
-            )}
-            <ProgramCard
-              icon={Shield} iconBg={CAT_SPARTAN + '1F'} iconColor={CAT_SPARTAN}
-              kicker="Routine Spartan" title={`${est.routineCount} exercices`}
-              minutes={est.items.find(i => i.type === 'routine')?.min}
-              tag=""
-              onClick={() => setOpenDetail('routine')}
-            />
+          <div style={{ display: 'flex', gap: 8 }}>
+            {RACES.map(r => <HomeObjectiveCard key={r.name} race={r} />)}
           </div>
 
-          {/* Forme du jour */}
-          <div style={{ marginTop: 18, background: CARD, border: `1px solid ${CARD_BORDER}`, borderRadius: 22, padding: '18px 20px' }}>
-            <div style={{ fontSize: 12.5, color: TEXT_SOFT, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Forme du jour</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{
-                width: 68, height: 68, borderRadius: '50%', flexShrink: 0,
-                background: `conic-gradient(${fatigue.color} ${fatigue.score * 3.6}deg, #1B2129 0deg)`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <div style={{ width: 54, height: 54, borderRadius: '50%', background: CARD, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: 18, fontWeight: 800 }}>{fatigue.score}</span>
-                  <span style={{ fontSize: 8.5, color: TEXT_SOFT }}>/100</span>
-                </div>
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 15, fontWeight: 800, color: fatigue.color }}>{fatigue.label}</div>
-                <div style={{ fontSize: 12.5, color: TEXT_SOFT, marginTop: 3, lineHeight: 1.4 }}>{fatigue.desc}</div>
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${CARD_BORDER}` }}>
-              <div>
-                <div style={{ fontSize: 10.5, color: TEXT_SOFT, display: 'flex', alignItems: 'center', gap: 4 }}><Moon size={11} /> Sommeil</div>
-                <div style={{ fontSize: 13.5, fontWeight: 700, marginTop: 3 }}>7h45</div>
-              </div>
-              <div>
-                <div style={{ fontSize: 10.5, color: TEXT_SOFT, display: 'flex', alignItems: 'center', gap: 4 }}><Battery size={11} /> Récup.</div>
-                <div style={{ fontSize: 13.5, fontWeight: 700, marginTop: 3 }}>82%</div>
-              </div>
-              <div>
-                <div style={{ fontSize: 10.5, color: TEXT_SOFT, display: 'flex', alignItems: 'center', gap: 4 }}><Gauge size={11} /> Charge</div>
-                <div style={{ fontSize: 13.5, fontWeight: 700, marginTop: 3, color: fatigue.color }}>{chargeLabel.replace('Charge ', '')}</div>
-              </div>
-            </div>
+          {/* Mon niveau + Programme du jour */}
+          <div style={{ display: 'flex', gap: 10, marginTop: 18, alignItems: 'stretch' }}>
+            <LevelMiniCard level={level} />
+            <ProgramDayCard items={programItems} isDone={isDone} onOpenItem={setOpenDetail} />
           </div>
 
-          {/* Aperçu des objectifs */}
-          <div style={{ marginTop: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span style={{ fontSize: 12.5, color: TEXT_SOFT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Aperçu de tes objectifs</span>
-            <button onClick={() => setTab('progression')} style={{ background: 'none', border: 'none', color: TEXT_FAINT, fontSize: 11.5, cursor: 'pointer' }}>Voir tout</button>
+          {/* Aperçu de ta semaine */}
+          <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <span style={{ fontSize: 12.5, color: TEXT_SOFT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Aperçu de ta semaine</span>
+            <button onClick={() => setTab('planning')} style={{ background: 'none', border: 'none', color: ACCENT, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>Détails</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-            {RACES.map(r => {
-              const d = daysBetween(todayISO(), r.date);
-              const pct = raceProgress(r);
-              return (
-                <div key={r.name} style={{ background: CARD, border: `1px solid ${CARD_BORDER}`, borderRadius: 16, padding: '12px 12px' }}>
-                  <div style={{ fontSize: 11, color: TEXT_SOFT, marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{RACE_SHORT[r.name] || r.name}</div>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: ACCENT }}>{d >= 0 ? `J-${d}` : '—'}</div>
-                  <div style={{ marginTop: 8 }}><MiniBar pct={pct} /></div>
-                  <div style={{ fontSize: 10, color: TEXT_FAINT, marginTop: 4 }}>{pct}%</div>
-                </div>
-              );
-            })}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+            <WeekStatCard icon={CalendarDays} color={ACCENT} value={`${weekOverview.plannedDone}/${weekOverview.plannedTotal}`} label="Séances prévues" pct={weekOverview.pct} />
+            <WeekStatCard icon={Flame} color={ORANGE} value={weekOverview.kcal.toLocaleString('fr-FR')} label="Calories brûlées" pct={weekOverview.pct} />
+            <WeekStatCard icon={Timer} color="#8B6CFF" value={`${weekOverview.hours}h${String(weekOverview.mins).padStart(2, '0')}`} label="Durée totale" pct={weekOverview.pct} />
+            <WeekStatCard icon={TrendingUp} color={ACCENT} value={`${weekOverview.delta >= 0 ? '+' : ''}${weekOverview.delta}%`} label="Progression" pct={Math.min(100, Math.max(0, 50 + weekOverview.delta))} />
+          </div>
+          <div style={{ display: 'flex', gap: 10, overflowX: 'auto', marginTop: 10, marginLeft: -20, marginRight: -20, paddingLeft: 20, paddingRight: 20, paddingBottom: 4 }}>
+            {weekOverview.upcoming.map(d => (
+              <WeekDayMiniCard key={d.date} day={d} isToday={d.date === day.date} done={!!(completions[d.date] && completions[d.date].fait)} />
+            ))}
           </div>
 
           {/* Main CTA */}
-          <button onClick={() => toggleDay(day.date)} disabled={!loaded} style={{
-            width: '100%', marginTop: 20, padding: '20px 0', borderRadius: 22, border: 'none',
-            cursor: loaded ? 'pointer' : 'default',
-            background: isDone ? '#1B2129' : ACCENT,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+          <button onClick={() => setOpenDetail(primaryItem)} disabled={!loaded} className="spartan-tap" style={{
+            width: '100%', marginTop: 22, padding: '18px 22px', borderRadius: 24, border: 'none',
+            cursor: loaded ? 'pointer' : 'default', background: ACCENT,
+            display: 'flex', alignItems: 'center', gap: 14, boxShadow: `0 16px 34px -14px ${ACCENT}66`,
           }}>
-            <span style={{ fontSize: 17, fontWeight: 800, color: isDone ? ACCENT : '#0A0C0E', display: 'flex', alignItems: 'center', gap: 8 }}>
-              {isDone ? <><CheckCircle2 size={19} /> Journée terminée</> : <><Rocket size={18} /> Démarrer ma journée</>}
-            </span>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: isDone ? TEXT_SOFT : '#2B3418' }}>
-              {isDone ? 'Bravo, Spartan.' : 'On y va, Spartan !'}
-            </span>
+            <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(10,12,14,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Play size={17} color="#0A0C0E" fill="#0A0C0E" />
+            </div>
+            <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+              <div style={{ fontSize: 15.5, fontWeight: 800, color: '#0A0C0E', letterSpacing: '0.01em' }}>DÉMARRER MA SÉANCE</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#2B3418', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ctaSubtitle}</div>
+            </div>
+            <ChevronRight size={20} color="#0A0C0E" />
           </button>
         </div>
       )}
@@ -4794,17 +4867,17 @@ export default function App() {
 
       {/* Detail modals */}
       {openDetail === 'routine' && (
-        <DetailModal onClose={() => setOpenDetail(null)} kicker="Routine Spartan" title={`${est.routineCount} exercices — ${est.items.find(i => i.type==='routine')?.min} min`}>
+        <DetailModal onClose={() => setOpenDetail(null)} kicker="Routine Spartan" title={`${est.routineCount} exercices — ${est.items.find(i => i.type==='routine')?.min} min`} footer={doneToggleFooter}>
           <RoutineDetail day={day} />
         </DetailModal>
       )}
       {openDetail === 'muscu' && hasMuscu && (
-        <DetailModal onClose={() => setOpenDetail(null)} kicker="Musculation" title={day.seanceMuscu.replace(/^[^\s]+\s/, '')}>
+        <DetailModal onClose={() => setOpenDetail(null)} kicker="Musculation" title={day.seanceMuscu.replace(/^[^\s]+\s/, '')} footer={doneToggleFooter}>
           <MuscuDetail exercises={muscuExercises} />
         </DetailModal>
       )}
       {openDetail === 'course' && day.course && (
-        <DetailModal onClose={() => setOpenDetail(null)} kicker="Course à pied" title={day.course.replace(/^[^\s]+\s/, '')}>
+        <DetailModal onClose={() => setOpenDetail(null)} kicker="Course à pied" title={day.course.replace(/^[^\s]+\s/, '')} footer={doneToggleFooter}>
           <CourseDetail match={courseMatch} />
         </DetailModal>
       )}
