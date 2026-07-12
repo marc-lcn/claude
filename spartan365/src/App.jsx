@@ -4578,10 +4578,10 @@ function WeekDayMiniCard({ day, isToday, done }) {
   })();
   return (
     <div style={{
-      flex: '0 0 132px', background: CARD, borderRadius: 20, padding: '13px 12px',
+      minWidth: 0, background: CARD, borderRadius: 20, padding: '13px 12px',
       border: isToday ? `1.5px solid ${ACCENT}` : `1px solid ${CARD_BORDER}`,
     }}>
-      <div style={{ fontSize: 11, fontWeight: 800, color: isToday ? ACCENT : TEXT_SOFT, marginBottom: 10 }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 800, color: isToday ? ACCENT : TEXT_SOFT, marginBottom: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
       <cat.icon size={21} color={cat.color} />
       <div style={{ fontSize: 11.5, fontWeight: 700, color: TEXT, marginTop: 10, lineHeight: 1.3 }}>{l1}<br />{l2}</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
@@ -4794,7 +4794,7 @@ export default function App() {
             <WeekStatCard icon={Timer} color="#8B6CFF" value={`${weekOverview.hours}h${String(weekOverview.mins).padStart(2, '0')}`} label="Durée totale" pct={weekOverview.pct} />
             <WeekStatCard icon={TrendingUp} color={ACCENT} value={`${weekOverview.delta >= 0 ? '+' : ''}${weekOverview.delta}%`} label="Progression" pct={Math.min(100, Math.max(0, 50 + weekOverview.delta))} />
           </div>
-          <div style={{ display: 'flex', gap: 10, overflowX: 'auto', marginTop: 10, marginLeft: -20, marginRight: -20, paddingLeft: 20, paddingRight: 20, paddingBottom: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 10 }}>
             {weekOverview.upcoming.map(d => (
               <WeekDayMiniCard key={d.date} day={d} isToday={d.date === day.date} done={!!(completions[d.date] && completions[d.date].fait)} />
             ))}
