@@ -821,12 +821,28 @@ async function handleBankFile(e){
   const file = e.target.files[0];
   if(!file) return;
   const statusEl = document.getElementById('import-status');
-  document.getElementById('upload-label').textContent = '⏳ ' + file.name + ' — lecture en cours...';
+  const uploadLabel = document.getElementById('upload-label');
+  const resetLabel = () => { uploadLabel.textContent = '📄 Cliquez pour choisir le fichier Excel exporté du Crédit Agricole'; e.target.value = ''; };
 
-  const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { cellDates:true });
-  const sheet = wb.Sheets[wb.SheetNames[0]];
-  const rawRows = XLSX.utils.sheet_to_json(sheet, { header:1, defval:null });
+  if(!/\.(xlsx|xls)$/i.test(file.name)){
+    statusEl.innerHTML = `<div class="error-msg">« ${file.name} » n'est pas un fichier Excel (.xlsx/.xls) — c'est le seul format que cette case sait lire automatiquement. Si vous n'avez que le PDF du relevé, il doit être importé manuellement puis attaché dans « Relevés déjà importés » ci-dessous.</div>`;
+    resetLabel();
+    return;
+  }
+
+  uploadLabel.textContent = '⏳ ' + file.name + ' — lecture en cours...';
+
+  let rawRows;
+  try{
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { cellDates:true });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    rawRows = XLSX.utils.sheet_to_json(sheet, { header:1, defval:null });
+  } catch(err){
+    statusEl.innerHTML = `<div class="error-msg">Impossible de lire « ${file.name} » : le fichier semble corrompu ou n'est pas un vrai fichier Excel (${err.message}).</div>`;
+    resetLabel();
+    return;
+  }
 
   // Trouver la ligne d'en-tête (contient "Date" et "Libell")
   let headerIdx = -1, colDate=-1, colLibelle=-1, colDebit=-1, colCredit=-1;
