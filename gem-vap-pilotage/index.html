@@ -1349,35 +1349,47 @@ function analyserBulletinPdf(items){
 
 // Ne remplit que les champs actuellement vides — ne recouvre jamais une valeur déjà
 // saisie ou déjà vérifiée manuellement. Renvoie true si l'extraction a pu s'exécuter.
+// Renvoie toujours { ok, reason } — reason explique précisément ce qui s'est passé
+// (utile pour diagnostiquer sans avoir à ouvrir la console du navigateur).
 async function appliquerExtractionSurSalaire(salaireRow, collaborateurId, fileOrBlob){
+  if(!window.pdfjsLib) return { ok:false, reason:'pdf.js non chargé (bloqueur de script/pub ? pas de connexion internet ?)' };
+  let items, ext;
   try{
-    const items = await extraireItemsPdf(fileOrBlob);
-    const ext = analyserBulletinPdf(items);
-
-    const updates = {};
-    if(salaireRow.brut==null && ext.brut!=null) updates.brut = ext.brut;
-    if(salaireRow.net_paye==null && ext.netPaye!=null) updates.net_paye = ext.netPaye;
-    if(salaireRow.charges_patronales==null && ext.chargesPatronales!=null) updates.charges_patronales = ext.chargesPatronales;
-    if(salaireRow.cout_global==null && ext.coutGlobal!=null) updates.cout_global = ext.coutGlobal;
-    if(salaireRow.conges_n_1==null && ext.congesN1!=null) updates.conges_n_1 = ext.congesN1;
-    if(salaireRow.conges_n==null && ext.congesN!=null) updates.conges_n = ext.congesN;
-    if(salaireRow.titres_restaurant==null && ext.titresRestaurant!=null) updates.titres_restaurant = ext.titresRestaurant;
-    if(Object.keys(updates).length>0){
-      await sb.from('salaires').update(updates).eq('id', salaireRow.id);
-    }
-
-    const collab = STATE.collaborateurs.find(c=>c.id===collaborateurId);
-    const collabUpdates = {};
-    if(collab && !collab.niveau && ext.niveau) collabUpdates.niveau = ext.niveau;
-    if(collab && !collab.matricule && ext.matricule) collabUpdates.matricule = ext.matricule;
-    if(Object.keys(collabUpdates).length>0){
-      await sb.from('collaborateurs').update(collabUpdates).eq('id', collaborateurId);
-    }
-    return true;
+    items = await extraireItemsPdf(fileOrBlob);
+    ext = analyserBulletinPdf(items);
   } catch(e){
-    console.error('Extraction PDF échouée', e);
-    return false;
+    console.error('Extraction PDF échouée', salaireRow.id, e);
+    return { ok:false, reason:'lecture du PDF impossible : ' + e.message };
   }
+
+  const updates = {};
+  if(salaireRow.brut==null && ext.brut!=null) updates.brut = ext.brut;
+  if(salaireRow.net_paye==null && ext.netPaye!=null) updates.net_paye = ext.netPaye;
+  if(salaireRow.charges_patronales==null && ext.chargesPatronales!=null) updates.charges_patronales = ext.chargesPatronales;
+  if(salaireRow.cout_global==null && ext.coutGlobal!=null) updates.cout_global = ext.coutGlobal;
+  if(salaireRow.conges_n_1==null && ext.congesN1!=null) updates.conges_n_1 = ext.congesN1;
+  if(salaireRow.conges_n==null && ext.congesN!=null) updates.conges_n = ext.congesN;
+  if(salaireRow.titres_restaurant==null && ext.titresRestaurant!=null) updates.titres_restaurant = ext.titresRestaurant;
+
+  if(Object.keys(updates).length===0){
+    return { ok:true, reason: ext.typeDocument ? 'rien de nouveau à écrire (déjà rempli, ou aucune donnée reconnue dans ce PDF)' : 'ce PDF ne ressemble pas au modèle de bulletin attendu (en-tête « ##BULLETIN## » introuvable)' };
+  }
+
+  const { error: updErr } = await sb.from('salaires').update(updates).eq('id', salaireRow.id);
+  if(updErr){
+    console.error('Echec écriture salaires', salaireRow.id, updErr);
+    return { ok:false, reason:'écriture refusée par Supabase : ' + updErr.message };
+  }
+
+  const collab = STATE.collaborateurs.find(c=>c.id===collaborateurId);
+  const collabUpdates = {};
+  if(collab && !collab.niveau && ext.niveau) collabUpdates.niveau = ext.niveau;
+  if(collab && !collab.matricule && ext.matricule) collabUpdates.matricule = ext.matricule;
+  if(Object.keys(collabUpdates).length>0){
+    const { error: collabErr } = await sb.from('collaborateurs').update(collabUpdates).eq('id', collaborateurId);
+    if(collabErr) console.error('Echec écriture collaborateurs (niveau/matricule)', collaborateurId, collabErr);
+  }
+  return { ok:true, reason:'champs mis à jour : ' + Object.keys(updates).join(', ') };
 }
 
 async function scannerTousLesBulletins(){
@@ -1387,28 +1399,43 @@ async function scannerTousLesBulletins(){
   // Retraite tout ce qui n'a pas encore été validé manuellement (statut 'a_verifier'), pas
   // seulement ce qui n'a jamais été scanné — permet de corriger une extraction automatique
   // erronée sans jamais toucher à une ligne que vous avez vérifiée/modifiée vous-même.
-  const { data: rows } = await sb.from('salaires')
+  const { data: rows, error: selErr } = await sb.from('salaires')
     .select('*, imports:document_id(chemin_storage)')
     .eq('statut', 'a_verifier');
+  if(selErr){ statusEl.textContent = 'Erreur de lecture Supabase : ' + selErr.message; return; }
+
+  const sansDocument = (rows||[]).filter(r=>!r.imports?.chemin_storage).length;
   const aTraiter = (rows||[]).filter(r=>r.imports?.chemin_storage);
-  if(aTraiter.length===0){ statusEl.textContent = 'Rien à extraire — tous les documents ont déjà leurs chiffres, ou ont été validés manuellement.'; return; }
+  if(aTraiter.length===0){
+    statusEl.textContent = sansDocument>0
+      ? `${sansDocument} ligne(s) sans document attaché, rien à scanner. Attachez d'abord le PDF.`
+      : 'Rien à extraire — tous les documents ont déjà leurs chiffres, ou ont été validés manuellement.';
+    return;
+  }
 
   btn.disabled = true;
   let done = 0, ok = 0;
+  const raisons = {};
   for(const r of aTraiter){
     statusEl.textContent = `Extraction en cours... ${done+1}/${aTraiter.length}`;
     const { data: blob, error } = await sb.storage.from('bulletins-salaire').download(r.imports.chemin_storage);
-    if(!error && blob){
+    let resultat;
+    if(error){
+      resultat = { ok:false, reason:'téléchargement du fichier impossible : ' + error.message };
+    } else {
       // Réinitialise les champs extraits automatiquement avant de relancer l'extraction,
       // pour que la correction du parseur s'applique aussi aux documents déjà scannés.
       const rowAReextraire = { ...r, brut:null, charges_patronales:null, cout_global:null,
         conges_n_1:null, conges_n:null, titres_restaurant:null };
-      const reussi = await appliquerExtractionSurSalaire(rowAReextraire, r.collaborateur_id, blob);
-      if(reussi) ok++;
+      resultat = await appliquerExtractionSurSalaire(rowAReextraire, r.collaborateur_id, blob);
     }
+    if(resultat.ok) ok++;
+    raisons[resultat.reason] = (raisons[resultat.reason]||0) + 1;
     done++;
   }
-  statusEl.textContent = `Terminé : ${ok}/${aTraiter.length} document(s) traité(s).`;
+  const detail = Object.entries(raisons).sort((a,b)=>b[1]-a[1]).slice(0,3)
+    .map(([raison,n])=>`${n}× ${raison}`).join(' · ');
+  statusEl.innerHTML = `Terminé : ${ok}/${aTraiter.length} document(s) traité(s).<br><span style="font-size:11.5px;">${detail}</span>`;
   btn.disabled = false;
   await loadReferenceData();
   loadRecapSalaires();
