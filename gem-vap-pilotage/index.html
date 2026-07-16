@@ -180,6 +180,7 @@ tr.ligne-fermee input[type="number"]{background:#e5e7f0;}
       <button class="nav-item active" data-page="dashboard">📊 Tableau de bord</button>
       <button class="nav-item" data-page="ca">🧾 Saisie du CA</button>
       <button class="nav-item" data-page="banque">🏦 Import bancaire</button>
+      <button class="nav-item" data-page="salaries">👥 Salariés</button>
       <button class="nav-item" data-page="controle">✅ Opérations à contrôler</button>
       <button class="nav-item" data-page="analyse">🏬 Analyse par magasin</button>
       <button class="nav-item" data-page="journal">🧾 Journal des ventes</button>
@@ -218,6 +219,7 @@ let STATE = {
   magasins: [],
   categories: [],
   exercices: [],
+  collaborateurs: [],
   currentExercice: null,
   regles: [],
   page: 'dashboard'
@@ -300,14 +302,16 @@ async function showApp(session){
    DONNEES DE REFERENCE (magasins, categories, exercices)
    ============================================================ */
 async function loadReferenceData(){
-  const [{data:magasins}, {data:categories}, {data:exercices}] = await Promise.all([
+  const [{data:magasins}, {data:categories}, {data:exercices}, {data:collaborateurs}] = await Promise.all([
     sb.from('magasins').select('*').eq('actif', true).order('ordre_affichage'),
     sb.from('categories').select('*').eq('actif', true).order('libelle'),
-    sb.from('exercices').select('*').order('date_debut', {ascending:false})
+    sb.from('exercices').select('*').order('date_debut', {ascending:false}),
+    sb.from('collaborateurs').select('*').eq('actif', true).order('nom')
   ]);
   STATE.magasins = magasins || [];
   STATE.categories = categories || [];
   STATE.exercices = exercices || [];
+  STATE.collaborateurs = collaborateurs || [];
 
   const aujourdHui = new Date().toISOString().slice(0,10);
   STATE.currentExercice =
@@ -335,6 +339,7 @@ const PAGE_TITLES = {
   dashboard: 'Tableau de bord',
   ca: 'Saisie du chiffre d\'affaires',
   banque: 'Import bancaire',
+  salaries: 'Salariés',
   controle: 'Opérations à contrôler',
   analyse: 'Analyse par magasin',
   journal: 'Journal des ventes',
@@ -355,6 +360,7 @@ function renderPage(){
   if(STATE.page==='dashboard') renderDashboard();
   else if(STATE.page==='ca') renderCaPage();
   else if(STATE.page==='banque') renderBanquePage();
+  else if(STATE.page==='salaries') renderSalariesPage();
   else if(STATE.page==='controle') renderControlePage();
   else if(STATE.page==='analyse') renderAnalysePage();
   else if(STATE.page==='journal') renderJournalVentesPage();
@@ -384,7 +390,8 @@ async function renderDashboard(){
     { data: caRows },
     { count: aControlerCount },
     { data: importsBanque },
-    { count: sansJustifCount }
+    { count: sansJustifCount },
+    { data: salairesMois }
   ] = await Promise.all([
     sb.from('ca_journalier')
       .select('*, magasins(code,nom)')
@@ -405,7 +412,10 @@ async function renderDashboard(){
       .gte('date_operation', monthStart).lte('date_operation', monthEnd+'T23:59:59')
       .not('debit','is', null)
       .is('piece_jointe_path', null)
-      .eq('justificatif_non_requis', false)
+      .eq('justificatif_non_requis', false),
+    sb.from('salaires')
+      .select('collaborateur_id, imports:document_id(chemin_storage)')
+      .eq('mois', moisPrecedentStr)
   ]);
 
   const rows = caRows || [];
@@ -453,6 +463,16 @@ async function renderDashboard(){
   const caTousComplets = caChecklist.every(c=>c.complet);
 
   const releveImporte = (importsBanque||[]).length > 0;
+
+  const activeCollabIds = new Set(STATE.collaborateurs.map(c=>c.id));
+  const bulletinsRecuIds = new Set(
+    (salairesMois||[])
+      .filter(s => s.imports?.chemin_storage && activeCollabIds.has(s.collaborateur_id))
+      .map(s => s.collaborateur_id)
+  );
+  const totalSalaries = STATE.collaborateurs.length;
+  const bulletinsRecus = bulletinsRecuIds.size;
+  const bulletinsTousRecus = totalSalaries > 0 && bulletinsRecus >= totalSalaries;
 
   content.innerHTML = `
     <div class="grid grid-4">
@@ -503,11 +523,11 @@ async function renderDashboard(){
           <div class="checklist-detail">${(sansJustifCount||0)===0 ? 'Tout est couvert' : `${sansJustifCount} dépense(s) sans justificatif ce mois — voir « Opérations à contrôler »`}</div>
         </div>
       </div>
-      <div class="checklist-item" style="opacity:.55;">
-        <span class="checklist-icon">⏳</span>
+      <div class="checklist-item">
+        <span class="checklist-icon">${totalSalaries===0 ? '⏳' : (bulletinsTousRecus ? '✅' : '⚠️')}</span>
         <div style="flex:1;">
           <div class="checklist-label">Bulletins de salaire <span style="font-weight:400;color:var(--muted);">(${moisPrecedentLabel})</span></div>
-          <div class="checklist-detail">Fonctionnalité à venir</div>
+          <div class="checklist-detail">${totalSalaries===0 ? 'Aucun salarié actif enregistré' : `${bulletinsRecus}/${totalSalaries} salarié(s) — voir « Salariés »`}</div>
         </div>
       </div>
     </div>
@@ -789,30 +809,30 @@ async function loadImportsLibrary(){
   container.querySelectorAll('tr[data-id]').forEach(tr=>{
     const id = tr.dataset.id;
     const docInput = tr.querySelector('.doc-input');
-    if(docInput) docInput.addEventListener('change', (e)=>handleDocumentUpload(id, e.target.files[0]));
+    if(docInput) docInput.addEventListener('change', (e)=>handleDocumentUpload('documents-bancaires', id, e.target.files[0], loadImportsLibrary));
     const voirLink = tr.querySelector('.voir-doc-link');
-    if(voirLink) voirLink.addEventListener('click', (e)=>{ e.preventDefault(); voirDocument(voirLink.dataset.path); });
+    if(voirLink) voirLink.addEventListener('click', (e)=>{ e.preventDefault(); voirDocument('documents-bancaires', voirLink.dataset.path); });
   });
 }
 
-async function handleDocumentUpload(importId, file){
+async function handleDocumentUpload(bucket, importId, file, onDone){
   if(!file) return;
   toast('Envoi du fichier...');
   const path = `${importId}/${Date.now()}_${sanitizeFilename(file.name)}`;
-  const { error: uploadErr } = await sb.storage.from('documents-bancaires').upload(path, file, { upsert:true });
+  const { error: uploadErr } = await sb.storage.from(bucket).upload(path, file, { upsert:true });
   if(uploadErr){
-    alert('Erreur lors de l\'envoi :\n' + uploadErr.message + '\n\nVérifiez que le bucket "documents-bancaires" existe bien dans Supabase > Storage.');
+    alert(`Erreur lors de l'envoi :\n` + uploadErr.message + `\n\nVérifiez que le bucket "${bucket}" existe bien dans Supabase > Storage.`);
     return;
   }
   const { error: updateErr } = await sb.from('imports').update({ chemin_storage: path }).eq('id', importId);
   if(updateErr){ toast('Erreur : ' + updateErr.message); return; }
   toast('Document attaché ✔');
-  loadImportsLibrary();
+  onDone();
 }
 
-async function voirDocument(path){
+async function voirDocument(bucket, path){
   if(!path) return;
-  const { data, error } = await sb.storage.from('documents-bancaires').createSignedUrl(path, 60);
+  const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, 60);
   if(error){ toast('Impossible d\'ouvrir le fichier : ' + error.message); return; }
   window.open(data.signedUrl, '_blank');
 }
@@ -954,6 +974,221 @@ function matchRegle(libelle){
     }
   }
   return null;
+}
+
+/* ============================================================
+   PAGE : SALARIÉS
+   ============================================================ */
+let SALARIE_SELECTED_ID = null;
+let OPEN_ANNEES_SALAIRES = new Set();
+
+function renderSalariesPage(){
+  const content = document.getElementById('content');
+  if(!STATE.collaborateurs || STATE.collaborateurs.length===0){
+    content.innerHTML = `<div class="empty">Aucun salarié actif enregistré.</div>`;
+    return;
+  }
+  if(!SALARIE_SELECTED_ID || !STATE.collaborateurs.some(c=>c.id===SALARIE_SELECTED_ID)){
+    SALARIE_SELECTED_ID = STATE.collaborateurs[0].id;
+  }
+
+  const groupes = affectationsDisponibles().map(code=>{
+    const magasin = STATE.magasins.find(m=>m.code===code);
+    const label = magasin ? magasin.nom : (code==='COMMUN' ? 'Commun' : code==='DIRIGEANT' ? 'Dirigeant' : code);
+    return { code, label, liste: STATE.collaborateurs.filter(c=>c.affectation===code) };
+  }).filter(g=>g.liste.length>0);
+
+  content.innerHTML = `
+    <div class="card">
+      <div class="field" style="margin-bottom:0;">
+        <label>Salarié</label>
+        <select id="salarie-select" style="padding:9px 10px;border:1px solid var(--border);border-radius:9px;font-size:13.5px;max-width:320px;">
+          ${groupes.map(g=>`
+            <optgroup label="${g.label}">
+              ${g.liste.map(c=>`<option value="${c.id}" ${c.id===SALARIE_SELECTED_ID?'selected':''}>${c.nom}${c.poste ? ' — '+c.poste : ''}</option>`).join('')}
+            </optgroup>`).join('')}
+        </select>
+      </div>
+    </div>
+
+    <div class="section-title">📎 Ajouter un bulletin de salaire</div>
+    <div class="card">
+      <div class="form-row">
+        <div class="field">
+          <label>Mois concerné</label>
+          <input type="month" id="salaire-mois-input">
+        </div>
+        <div class="field">
+          <label>Fichier (PDF)</label>
+          <label class="btn secondary" style="cursor:pointer;display:inline-block;">Choisir le fichier<input type="file" id="salaire-file-input" accept=".pdf" hidden></label>
+        </div>
+      </div>
+      <div class="hint" style="margin-top:10px;">Si un bulletin existe déjà pour ce salarié et ce mois, il sera remplacé.</div>
+      <div id="salaire-import-status" style="margin-top:14px;"></div>
+    </div>
+
+    <div class="section-title">📁 Bulletins déjà déposés</div>
+    <div id="salaires-groups"><div class="empty">Chargement...</div></div>
+  `;
+
+  document.getElementById('salarie-select').addEventListener('change', (e)=>{
+    SALARIE_SELECTED_ID = e.target.value;
+    OPEN_ANNEES_SALAIRES = new Set();
+    renderSalariesPage();
+  });
+  document.getElementById('salaire-file-input').addEventListener('change', handleSalaireFile);
+
+  loadSalairesLibrary();
+}
+
+async function handleSalaireFile(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('salaire-import-status');
+  const moisInput = document.getElementById('salaire-mois-input');
+  const mois = moisInput.value;
+  const resetInput = () => { e.target.value = ''; };
+
+  if(!mois){
+    statusEl.innerHTML = `<div class="error-msg">Choisissez d'abord le mois concerné par ce bulletin.</div>`;
+    resetInput();
+    return;
+  }
+  if(!/\.pdf$/i.test(file.name)){
+    statusEl.innerHTML = `<div class="error-msg">« ${file.name} » n'est pas un PDF — c'est le seul format accepté ici.</div>`;
+    resetInput();
+    return;
+  }
+  const exercice = findExerciceForDate(`${mois}-01`);
+  if(!exercice){
+    statusEl.innerHTML = `<div class="error-msg">Aucun exercice comptable ne couvre ${mois}.</div>`;
+    resetInput();
+    return;
+  }
+
+  const collaborateur = STATE.collaborateurs.find(c=>c.id===SALARIE_SELECTED_ID);
+  const { data: existant } = await sb.from('salaires')
+    .select('id, document_id')
+    .eq('collaborateur_id', SALARIE_SELECTED_ID)
+    .eq('mois', mois)
+    .maybeSingle();
+
+  let importId = existant?.document_id;
+  if(importId){
+    await sb.from('imports').update({ nom_fichier: file.name }).eq('id', importId);
+  } else {
+    const { data: importRow, error: importErr } = await sb.from('imports').insert({
+      exercice_id: exercice.id, type_import: 'salaire', mois, nom_fichier: file.name, statut: 'importé'
+    }).select().single();
+    if(importErr){ statusEl.innerHTML = `<div class="error-msg">Erreur : ${importErr.message}</div>`; resetInput(); return; }
+    importId = importRow.id;
+  }
+
+  const path = `${SALARIE_SELECTED_ID}/${mois}_${Date.now()}_${sanitizeFilename(file.name)}`;
+  const { error: uploadErr } = await sb.storage.from('bulletins-salaire').upload(path, file, { upsert:true });
+  if(uploadErr){
+    statusEl.innerHTML = `<div class="error-msg">Erreur lors de l'envoi : ${uploadErr.message}</div>`;
+    resetInput();
+    return;
+  }
+  await sb.from('imports').update({ chemin_storage: path }).eq('id', importId);
+
+  if(existant){
+    await sb.from('salaires').update({ document_id: importId }).eq('id', existant.id);
+  } else {
+    const { error: salErr } = await sb.from('salaires').insert({
+      exercice_id: exercice.id,
+      collaborateur_id: SALARIE_SELECTED_ID,
+      mois,
+      affectation: collaborateur?.affectation || null,
+      document_id: importId,
+      statut: 'a_verifier'
+    });
+    if(salErr){ statusEl.innerHTML = `<div class="error-msg">Erreur : ${salErr.message}</div>`; resetInput(); return; }
+  }
+
+  statusEl.innerHTML = `<div class="badge green" style="font-size:13px;">Bulletin attaché ✔</div>`;
+  resetInput();
+  moisInput.value = '';
+  loadSalairesLibrary();
+}
+
+async function loadSalairesLibrary(){
+  const container = document.getElementById('salaires-groups');
+  if(!SALARIE_SELECTED_ID){ container.innerHTML = `<div class="empty">Sélectionnez un salarié.</div>`; return; }
+
+  const { data: salaires } = await sb.from('salaires')
+    .select('*, imports:document_id(*)')
+    .eq('collaborateur_id', SALARIE_SELECTED_ID)
+    .order('mois', {ascending:false});
+
+  if(!salaires || salaires.length===0){
+    container.innerHTML = `<div class="empty">Aucun bulletin déposé pour ce salarié.</div>`;
+    return;
+  }
+
+  const groups = {};
+  salaires.forEach(s=>{
+    const annee = s.mois ? s.mois.slice(0,4) : 'Sans date';
+    if(!groups[annee]) groups[annee] = [];
+    groups[annee].push(s);
+  });
+  const annees = Object.keys(groups).sort().reverse();
+  if(OPEN_ANNEES_SALAIRES.size===0 && annees.length>0) OPEN_ANNEES_SALAIRES.add(annees[0]);
+
+  container.innerHTML = annees.map(annee=>{
+    const liste = groups[annee];
+    const isOpen = OPEN_ANNEES_SALAIRES.has(annee);
+    const nbAvecDoc = liste.filter(s=>s.imports?.chemin_storage).length;
+    return `
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px;">
+      <button class="mois-toggle-sal" data-annee="${annee}" style="width:100%;text-align:left;background:none;border:none;font-weight:700;font-size:14px;cursor:pointer;color:var(--text);display:flex;justify-content:space-between;align-items:center;padding:14px 18px;">
+        <span>${annee}</span>
+        <span style="font-weight:600;color:var(--muted);font-size:12.5px;">${nbAvecDoc}/${liste.length} document(s) attaché(s) <span class="chevron">${isOpen?'▲':'▼'}</span></span>
+      </button>
+      <div class="mois-content" data-annee-content-sal="${annee}" style="display:${isOpen?'block':'none'};border-top:1px solid var(--border);overflow-x:auto;">
+        <table>
+          <thead><tr><th>Mois</th><th>Nom du fichier</th><th>Document original</th></tr></thead>
+          <tbody>
+            ${liste.map(s=>{
+              const moisLabel = s.mois ? new Date(s.mois+'-01').toLocaleDateString('fr-FR',{month:'long',year:'numeric'}) : '—';
+              const imp = s.imports;
+              const docCell = imp?.chemin_storage
+                ? `<a href="#" class="voir-doc-link-sal" data-path="${imp.chemin_storage}" style="color:var(--blue);font-weight:600;text-decoration:none;">📎 Voir le document</a>
+                   <label class="btn secondary small" style="margin-left:6px;cursor:pointer;">Remplacer<input type="file" class="doc-input-sal" accept=".pdf" hidden></label>`
+                : `<label class="btn small" style="cursor:pointer;">+ Attacher le fichier<input type="file" class="doc-input-sal" accept=".pdf" hidden></label>`;
+              return `
+                <tr data-import-id="${imp?.id || ''}">
+                  <td style="text-transform:capitalize;">${moisLabel}</td>
+                  <td>${imp?.nom_fichier || '—'}</td>
+                  <td>${docCell}</td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.querySelectorAll('.mois-toggle-sal').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const annee = btn.dataset.annee;
+      const el = container.querySelector(`[data-annee-content-sal="${annee}"]`);
+      const willOpen = el.style.display === 'none';
+      el.style.display = willOpen ? 'block' : 'none';
+      if(willOpen) OPEN_ANNEES_SALAIRES.add(annee); else OPEN_ANNEES_SALAIRES.delete(annee);
+      btn.querySelector('.chevron').textContent = willOpen ? '▲' : '▼';
+    });
+  });
+
+  container.querySelectorAll('tr[data-import-id]').forEach(tr=>{
+    const id = tr.dataset.importId;
+    if(!id) return;
+    const docInput = tr.querySelector('.doc-input-sal');
+    if(docInput) docInput.addEventListener('change', (e)=>handleDocumentUpload('bulletins-salaire', id, e.target.files[0], loadSalairesLibrary));
+    const voirLink = tr.querySelector('.voir-doc-link-sal');
+    if(voirLink) voirLink.addEventListener('click', (e)=>{ e.preventDefault(); voirDocument('bulletins-salaire', voirLink.dataset.path); });
+  });
 }
 
 /* ============================================================
