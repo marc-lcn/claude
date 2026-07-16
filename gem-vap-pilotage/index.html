@@ -1152,14 +1152,14 @@ async function loadRecapSalaires(){
           <td>${c.nom}</td>
           <td>${c.poste || '—'}</td>
           <td>${c.statut || '—'}</td>
-          <td>${c.niveau || '—'}</td>
+          <td style="text-align:center;">${c.niveau || '—'}</td>
           <td>${calculerAnciennete(c.date_entree, c.date_sortie)}</td>
           <td style="text-transform:capitalize;">${moisLabel}</td>
-          <td>${s?.net_paye!=null ? fmtEUR(s.net_paye) : '—'}</td>
-          <td>${s?.titres_restaurant!=null ? fmtEUR(s.titres_restaurant) : '—'}</td>
-          <td>${s?.cout_global!=null ? fmtEUR(s.cout_global) : '—'}</td>
-          <td>${s?.conges_n_1!=null ? s.conges_n_1+' j' : '—'}</td>
-          <td>${s?.conges_n!=null ? s.conges_n+' j' : '—'}</td>
+          <td style="text-align:right;">${s?.net_paye!=null ? fmtEUR(s.net_paye) : '—'}</td>
+          <td style="text-align:right;">${s?.titres_restaurant!=null ? fmtEUR(s.titres_restaurant) : '—'}</td>
+          <td style="text-align:right;">${s?.cout_global!=null ? fmtEUR(s.cout_global) : '—'}</td>
+          <td style="text-align:right;">${s?.conges_n_1!=null ? s.conges_n_1+' j' : '—'}</td>
+          <td style="text-align:right;">${s?.conges_n!=null ? s.conges_n+' j' : '—'}</td>
         </tr>`;
     }).join('');
     grandTotalCout += totalCout;
@@ -1171,7 +1171,7 @@ async function loadRecapSalaires(){
       </div>
       <div style="overflow-x:auto;border-top:1px solid var(--border);">
         <table>
-          <thead><tr><th>Salarié</th><th>Poste</th><th>Statut</th><th>Niveau</th><th>Ancienneté</th><th>Dernier bulletin</th><th>Net payé</th><th>Titres resto</th><th>Coût global</th><th>Congés N-1</th><th>Congés N</th></tr></thead>
+          <thead><tr><th>Salarié</th><th>Poste</th><th>Statut</th><th style="text-align:center;">Niveau</th><th>Ancienneté</th><th>Dernier bulletin</th><th style="text-align:right;">Net payé</th><th style="text-align:right;">Titres resto</th><th style="text-align:right;">Coût global</th><th style="text-align:right;">Congés N-1</th><th style="text-align:right;">Congés N</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
