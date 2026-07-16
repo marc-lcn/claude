@@ -12,7 +12,11 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js"></script>
+<script type="module">
+  import * as pdfjsLib from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.min.mjs';
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';
+  window.pdfjsLib = pdfjsLib;
+</script>
 <style>
 :root{
   --navy:#11153a;
@@ -212,10 +216,6 @@ const SUPABASE_URL = "https://qulvninnozpoefmptvnk.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1bHZuaW5ub3pwb2VmbXB0dm5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2OTA3MjgsImV4cCI6MjA5OTI2NjcyOH0.OciOmKi8DFre1_Z2_7WDFcBqkYeCjf_Pxyco19ZFit8";
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-if(window.pdfjsLib){
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js';
-}
 
 /* ============================================================
    ETAT GLOBAL
@@ -1348,11 +1348,19 @@ function analyserBulletinPdf(items){
 }
 
 // Ne remplit que les champs actuellement vides — ne recouvre jamais une valeur déjà
-// saisie ou déjà vérifiée manuellement. Renvoie true si l'extraction a pu s'exécuter.
-// Renvoie toujours { ok, reason } — reason explique précisément ce qui s'est passé
-// (utile pour diagnostiquer sans avoir à ouvrir la console du navigateur).
+// saisie ou déjà vérifiée manuellement. Renvoie toujours { ok, reason } — reason explique
+// précisément ce qui s'est passé (utile pour diagnostiquer sans ouvrir la console).
+async function attendrePdfjs(timeoutMs=8000){
+  const debut = Date.now();
+  while(!window.pdfjsLib){
+    if(Date.now()-debut > timeoutMs) return false;
+    await new Promise(r=>setTimeout(r, 150));
+  }
+  return true;
+}
+
 async function appliquerExtractionSurSalaire(salaireRow, collaborateurId, fileOrBlob){
-  if(!window.pdfjsLib) return { ok:false, reason:'pdf.js non chargé (bloqueur de script/pub ? pas de connexion internet ?)' };
+  if(!(await attendrePdfjs())) return { ok:false, reason:'pdf.js non chargé après 8 secondes (bloqueur de script/pub ? pas de connexion internet ?)' };
   let items, ext;
   try{
     items = await extraireItemsPdf(fileOrBlob);
@@ -1488,7 +1496,7 @@ async function uploadBulletin(collaborateurId, mois, typeDocument, file){
     salaireRow = inserted;
   }
 
-  if(/\.pdf$/i.test(file.name) && window.pdfjsLib){
+  if(/\.pdf$/i.test(file.name)){
     await appliquerExtractionSurSalaire(salaireRow, collaborateurId, file);
   }
   return { ok:true };
