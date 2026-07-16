@@ -1729,11 +1729,11 @@ function renderParametresPage(){
             <div class="field"><label>Poste</label><input type="text" id="new-collab-poste" placeholder="Ex : Vendeur"></div>
             <div class="field"><button class="btn" id="add-collab-btn">Ajouter</button></div>
           </div>
-          <div class="hint" style="margin:14px 0 10px 0;">Le magasin peut être changé à tout moment (mutation). Désactiver un salarié le retire des listes, sans supprimer son historique.</div>
+          <div class="hint" style="margin:14px 0 10px 0;">Le magasin et le poste peuvent être changés à tout moment (mutation, promotion). Décochez « Actif » pour un salarié parti : il disparaît de la page « Salariés » et du reste de l'appli, sans que son historique de bulletins soit supprimé.</div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Nom</th><th>Magasin</th><th>Poste</th><th>Statut</th><th></th></tr></thead>
-              <tbody id="collab-tbody"><tr><td colspan="5" class="empty">Chargement...</td></tr></tbody>
+              <thead><tr><th>Nom</th><th>Magasin</th><th>Poste</th><th style="text-align:center;">Actif</th></tr></thead>
+              <tbody id="collab-tbody"><tr><td colspan="4" class="empty">Chargement...</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -1830,6 +1830,7 @@ function renderParametresPage(){
     toast('Salarié ajouté ✔');
     document.getElementById('new-collab-nom').value = '';
     document.getElementById('new-collab-poste').value = '';
+    await loadReferenceData();
     loadCollaborateursAdmin();
   });
 
@@ -2177,21 +2178,20 @@ async function afficherLignesLieesCategorie(categorieId, tr, toutesCategories){
 }
 
 async function loadCollaborateursAdmin(){
-  const { data } = await sb.from('collaborateurs').select('*').order('nom');
+  const { data } = await sb.from('collaborateurs').select('*').order('affectation', {nullsFirst:false}).order('nom');
   const tbody = document.getElementById('collab-tbody');
-  if(!data || data.length===0){ tbody.innerHTML = `<tr><td colspan="5" class="empty">Aucun salarié.</td></tr>`; return; }
+  if(!data || data.length===0){ tbody.innerHTML = `<tr><td colspan="4" class="empty">Aucun salarié.</td></tr>`; return; }
   const affectations = affectationsDisponibles();
   tbody.innerHTML = data.map(c=>`
-    <tr data-id="${c.id}">
+    <tr data-id="${c.id}" style="${c.actif?'':'opacity:.5;'}">
       <td><input type="text" class="rename-collab-input" value="${(c.nom||'').replace(/"/g,'&quot;')}" style="width:100%;max-width:220px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;"></td>
       <td>
         <select class="collab-affectation-select row-select">
           ${affectations.map(a=>`<option value="${a}" ${a===c.affectation?'selected':''}>${a}</option>`).join('')}
         </select>
       </td>
-      <td><input type="text" class="collab-poste-input" value="${(c.poste||'').replace(/"/g,'&quot;')}" placeholder="Poste" style="width:100%;max-width:160px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;"></td>
-      <td><span class="badge ${c.actif?'green':'red'}">${c.actif?'Actif':'Désactivé'}</span></td>
-      <td><button class="btn secondary small toggle-collab-btn">${c.actif?'Désactiver':'Réactiver'}</button></td>
+      <td><input type="text" class="collab-poste-input" value="${(c.poste||'').replace(/"/g,'&quot;')}" placeholder="Poste (Vendeur, Responsable, Apprenti...)" style="width:100%;max-width:220px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;"></td>
+      <td style="text-align:center;"><input type="checkbox" class="collab-actif-checkbox" ${c.actif?'checked':''} title="${c.actif?'Décocher pour retirer ce salarié des listes':'Cocher pour le réactiver'}"></td>
     </tr>`).join('');
 
   tbody.querySelectorAll('tr').forEach(tr=>{
@@ -2199,11 +2199,13 @@ async function loadCollaborateursAdmin(){
     const nomInput = tr.querySelector('.rename-collab-input');
     const affSelect = tr.querySelector('.collab-affectation-select');
     const posteInput = tr.querySelector('.collab-poste-input');
+    const actifCheckbox = tr.querySelector('.collab-actif-checkbox');
 
     async function saveChamp(champ, valeur, message){
       const { error } = await sb.from('collaborateurs').update({ [champ]: valeur }).eq('id', id);
       if(error){ toast('Erreur : ' + error.message); return; }
       toast(message);
+      await loadReferenceData();
     }
     nomInput.addEventListener('change', ()=>{
       const v = nomInput.value.trim();
@@ -2212,10 +2214,11 @@ async function loadCollaborateursAdmin(){
     affSelect.addEventListener('change', ()=> saveChamp('affectation', affSelect.value, 'Magasin mis à jour ✔'));
     posteInput.addEventListener('change', ()=> saveChamp('poste', posteInput.value.trim() || null, 'Poste mis à jour ✔'));
 
-    tr.querySelector('.toggle-collab-btn').addEventListener('click', async ()=>{
-      const { data: current } = await sb.from('collaborateurs').select('actif').eq('id', id).single();
-      const { error } = await sb.from('collaborateurs').update({ actif: !current.actif }).eq('id', id);
-      if(error){ toast('Erreur : ' + error.message); return; }
+    actifCheckbox.addEventListener('change', async ()=>{
+      const { error } = await sb.from('collaborateurs').update({ actif: actifCheckbox.checked }).eq('id', id);
+      if(error){ toast('Erreur : ' + error.message); actifCheckbox.checked = !actifCheckbox.checked; return; }
+      toast(actifCheckbox.checked ? 'Salarié réactivé ✔' : 'Salarié désactivé ✔');
+      await loadReferenceData();
       loadCollaborateursAdmin();
     });
   });
