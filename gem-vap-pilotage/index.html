@@ -1041,7 +1041,7 @@ function renderSalariesPage(){
 
   content.innerHTML = `
     <div class="section-title">📊 Récapitulatif de la masse salariale</div>
-    <div class="hint" style="margin-bottom:10px;">Pour chaque salarié actif : son dernier bulletin connu, son coût pour le magasin, ses congés. Brut, net payé, charges et coût global sont extraits automatiquement du PDF à chaque import (mois, congés et titres resto restent à vérifier/compléter à la main).</div>
+    <div class="hint" style="margin-bottom:10px;">Pour chaque salarié actif : son dernier bulletin connu, son coût pour le magasin, ses congés. Brut, net payé, charges, coût global, congés N-1/N et titres restaurant sont extraits automatiquement du PDF à chaque import — une case vide sur le bulletin reste à 0.</div>
     <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
       <div>
         <div style="font-weight:700;font-size:13.5px;">🔄 Extraction automatique</div>
@@ -1211,13 +1211,13 @@ async function extraireItemsPdf(fileOrBlob){
   for(let i=1;i<=pdf.numPages;i++){
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    items = items.concat(content.items.map(it=>it.str));
+    items = items.concat(content.items.map(it=>({ str: it.str, x: it.transform[4], y: it.transform[5] })));
   }
   return items;
 }
 
-// Reconstruit les nombres à partir du tableau d'items pdf.js : évite l'ambiguïté du
-// séparateur de milliers français ("1" " " "975.16") vs deux nombres adjacents distincts.
+// Reconstruit les nombres à partir d'une liste de chaînes (items pdf.js) : évite l'ambiguïté
+// du séparateur de milliers français ("1" " " "975.16") vs deux nombres adjacents distincts.
 function extraireNombresDepuisItems(arr){
   const nombres = [];
   for(let i=0;i<arr.length;i++){
@@ -1232,13 +1232,61 @@ function extraireNombresDepuisItems(arr){
   return nombres;
 }
 
+// Le tableau "Congés N-1 / Congés N" (Acquis/Pris/Solde) est toujours en bas à gauche
+// de la page, à un emplacement fixe du modèle — on le repère par coordonnées plutôt que
+// par ordre du texte, pour distinguer sans ambiguïté quelle case précise est vide (= 0).
+function extraireCongesDepuisItems(items){
+  const labelAcquis = items.find(it=>it.str.trim()==='Acquis');
+  const labelPris = items.find(it=>it.str.trim()==='Pris');
+  const labelSolde = items.find(it=>it.str.trim()==='Solde');
+  const labelColN1 = items.find(it=>it.str.trim()==='N-1');
+  if(!labelAcquis || !labelPris || !labelSolde || !labelColN1) return null;
+
+  const seuilColonne = labelColN1.x + 40;
+  function valeurLigne(yCible){
+    const candidats = items.filter(it =>
+      Math.abs(it.y - yCible) < 3 && it.x < 200 && /^-?\d+[.,]\d{2}$/.test(it.str.trim())
+    );
+    const n1 = candidats.find(it => it.x < seuilColonne);
+    const n = candidats.find(it => it.x >= seuilColonne);
+    return {
+      n1: n1 ? parseFloat(n1.str.replace(',','.')) : 0,
+      n: n ? parseFloat(n.str.replace(',','.')) : 0,
+    };
+  }
+  return { solde: valeurLigne(labelSolde.y) };
+}
+
+// Cherche le premier nombre qui suit un libellé donné (ex: "Titres-restaurant"),
+// en tolérant que le libellé soit scindé en plusieurs items pdf.js.
+function chercherValeurApresLibelle(items, regexLibelle){
+  for(let i=0;i<items.length;i++){
+    let assemble = '';
+    let j = i;
+    while(j<items.length && assemble.length<60){
+      assemble += items[j].str;
+      j++;
+      if(regexLibelle.test(assemble)) break;
+    }
+    if(regexLibelle.test(assemble)){
+      const suite = items.slice(j, j+8).map(it=>it.str);
+      const nombres = extraireNombresDepuisItems(suite);
+      if(nombres.length>0) return nombres[0];
+    }
+  }
+  return null;
+}
+
 // Calé sur le modèle de bulletin GEM.VAP (ligne d'en-tête "##BULLETIN##MM-YYYY##...",
 // tableau récap Mensuel/Annuel en fin de document). Renvoie null pour tout champ non
-// reconnu avec certitude — jamais de valeur devinée au hasard.
-function analyserBulletinPdf(rawItems){
+// reconnu avec certitude — jamais de valeur devinée au hasard (sauf congés : case vide = 0,
+// confirmé par vérification manuelle de plusieurs bulletins).
+function analyserBulletinPdf(items){
+  const rawItems = items.map(it=>it.str);
   const texte = rawItems.join(' ').replace(/\s+/g,' ').trim();
   const res = { typeDocument:null, mois:null, matricule:null, nom:null, niveau:null,
-    statutPro:null, brut:null, netPaye:null, chargesPatronales:null, coutGlobal:null };
+    statutPro:null, brut:null, netPaye:null, chargesPatronales:null, coutGlobal:null,
+    congesN1:null, congesN:null, titresRestaurant:null };
 
   const mHeader = texte.match(/##(BULLETIN|SOLDECPT)##(\d{2})-(\d{4})##(\d+)##([^#]+)##([^#]+)##(\d+)/);
   if(mHeader){
@@ -1274,6 +1322,13 @@ function analyserBulletinPdf(rawItems){
       res.coutGlobal = bloc[12];
     }
   }
+
+  const conges = extraireCongesDepuisItems(items);
+  if(conges){ res.congesN1 = conges.solde.n1; res.congesN = conges.solde.n; }
+
+  const titres = chercherValeurApresLibelle(items, /Titres[\s-]*restaurant/i);
+  if(titres!=null) res.titresRestaurant = titres;
+
   return res;
 }
 
@@ -1289,6 +1344,9 @@ async function appliquerExtractionSurSalaire(salaireRow, collaborateurId, fileOr
     if(salaireRow.net_paye==null && ext.netPaye!=null) updates.net_paye = ext.netPaye;
     if(salaireRow.charges_patronales==null && ext.chargesPatronales!=null) updates.charges_patronales = ext.chargesPatronales;
     if(salaireRow.cout_global==null && ext.coutGlobal!=null) updates.cout_global = ext.coutGlobal;
+    if(salaireRow.conges_n_1==null && ext.congesN1!=null) updates.conges_n_1 = ext.congesN1;
+    if(salaireRow.conges_n==null && ext.congesN!=null) updates.conges_n = ext.congesN;
+    if(salaireRow.titres_restaurant==null && ext.titresRestaurant!=null) updates.titres_restaurant = ext.titresRestaurant;
     if(Object.keys(updates).length>0){
       await sb.from('salaires').update(updates).eq('id', salaireRow.id);
     }
