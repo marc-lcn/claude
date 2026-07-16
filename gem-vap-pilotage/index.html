@@ -981,6 +981,39 @@ function matchRegle(libelle){
    ============================================================ */
 let SALARIE_SELECTED_ID = null;
 let OPEN_ANNEES_SALAIRES = new Set();
+let BULK_ROWS = [];
+
+const TYPE_DOCUMENT_LABELS = { bulletin: 'Bulletin de salaire', solde_tout_compte: 'Solde de tout compte' };
+const MOIS_FR = {
+  janvier:1, fevrier:2, mars:3, avril:4, mai:5, juin:6,
+  juillet:7, aout:8, septembre:9, octobre:10, novembre:11, decembre:12
+};
+
+function sansAccents(s){
+  return (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'');
+}
+
+// Reconnaît le format "NOM_Prenom_Bulletin_Mois_Annee.pdf" (ou "..._Solde_de_tout_compte_...")
+function parseNomFichierBulletin(filename){
+  const base = filename.replace(/\.pdf$/i, '');
+  const m = base.match(/^(.+?)_(Bulletin|Solde[_ ]?de[_ ]?tout[_ ]?compte)_([A-Za-zÀ-ÿ]+)_(\d{4})$/i);
+  if(!m) return { personSegment: base.replace(/_/g,' '), typeDocument: 'bulletin', mois: null };
+  const [, personSegment, typeRaw, moisRaw, anneeRaw] = m;
+  const typeDocument = /solde/i.test(typeRaw) ? 'solde_tout_compte' : 'bulletin';
+  const moisNum = MOIS_FR[sansAccents(moisRaw).toLowerCase()];
+  const mois = moisNum ? `${anneeRaw}-${String(moisNum).padStart(2,'0')}` : null;
+  return { personSegment: personSegment.replace(/_/g,' '), typeDocument, mois };
+}
+
+// Retrouve le salarié correspondant, quel que soit l'ordre nom/prénom dans le nom de fichier
+function deviverCollaborateur(personSegment){
+  const norm = sansAccents(personSegment).toUpperCase();
+  const tokens = norm.split(/\s+/).filter(Boolean);
+  return STATE.collaborateurs.find(c=>{
+    const cNorm = sansAccents(c.nom).toUpperCase();
+    return norm.includes(cNorm) || tokens.some(t=>t.length>2 && cNorm.includes(t));
+  }) || null;
+}
 
 function renderSalariesPage(){
   const content = document.getElementById('content');
@@ -997,8 +1030,19 @@ function renderSalariesPage(){
     const label = magasin ? magasin.nom : (code==='COMMUN' ? 'Commun' : code==='DIRIGEANT' ? 'Dirigeant' : code);
     return { code, label, liste: STATE.collaborateurs.filter(c=>c.affectation===code) };
   }).filter(g=>g.liste.length>0);
+  const idsGroupes = new Set(groupes.flatMap(g=>g.liste.map(c=>c.id)));
+  const autres = STATE.collaborateurs.filter(c=>!idsGroupes.has(c.id));
+  if(autres.length>0) groupes.push({ code:'AUTRE', label:'Autres', liste: autres });
 
   content.innerHTML = `
+    <div class="section-title">📦 Import groupé (plusieurs fichiers à la fois)</div>
+    <div class="card">
+      <div class="hint">Sélectionnez le dossier qui contient tous les PDF (peu importe s'ils sont répartis dans des sous-dossiers par salarié). Le salarié, le mois et le type de document sont devinés à partir du nom de chaque fichier (ex: « PERRET_Audrey_Bulletin_Juin_2026.pdf ») — vérifiez et corrigez les lignes en rouge avant de valider.</div>
+      <div style="height:12px"></div>
+      <label class="btn secondary" style="cursor:pointer;display:inline-block;">📁 Choisir un dossier<input type="file" id="salaire-bulk-input" webkitdirectory multiple accept=".pdf" hidden></label>
+      <div id="salaire-bulk-preview" style="margin-top:16px;"></div>
+    </div>
+
     <div class="card">
       <div class="field" style="margin-bottom:0;">
         <label>Salarié</label>
@@ -1011,9 +1055,16 @@ function renderSalariesPage(){
       </div>
     </div>
 
-    <div class="section-title">📎 Ajouter un bulletin de salaire</div>
+    <div class="section-title">📎 Ajouter un document pour ce salarié</div>
     <div class="card">
       <div class="form-row">
+        <div class="field">
+          <label>Type de document</label>
+          <select id="salaire-type-select" style="padding:9px 10px;border:1px solid var(--border);border-radius:9px;font-size:13.5px;">
+            <option value="bulletin">Bulletin de salaire</option>
+            <option value="solde_tout_compte">Solde de tout compte</option>
+          </select>
+        </div>
         <div class="field">
           <label>Mois concerné</label>
           <input type="month" id="salaire-mois-input">
@@ -1023,11 +1074,11 @@ function renderSalariesPage(){
           <label class="btn secondary" style="cursor:pointer;display:inline-block;">Choisir le fichier<input type="file" id="salaire-file-input" accept=".pdf" hidden></label>
         </div>
       </div>
-      <div class="hint" style="margin-top:10px;">Si un bulletin existe déjà pour ce salarié et ce mois, il sera remplacé.</div>
+      <div class="hint" style="margin-top:10px;">Si ce document existe déjà pour ce salarié, ce mois et ce type, il sera remplacé.</div>
       <div id="salaire-import-status" style="margin-top:14px;"></div>
     </div>
 
-    <div class="section-title">📁 Bulletins déjà déposés</div>
+    <div class="section-title">📁 Documents déjà déposés</div>
     <div id="salaires-groups"><div class="empty">Chargement...</div></div>
   `;
 
@@ -1037,40 +1088,22 @@ function renderSalariesPage(){
     renderSalariesPage();
   });
   document.getElementById('salaire-file-input').addEventListener('change', handleSalaireFile);
+  document.getElementById('salaire-bulk-input').addEventListener('change', handleBulkFolderSelect);
 
   loadSalairesLibrary();
 }
 
-async function handleSalaireFile(e){
-  const file = e.target.files[0];
-  if(!file) return;
-  const statusEl = document.getElementById('salaire-import-status');
-  const moisInput = document.getElementById('salaire-mois-input');
-  const mois = moisInput.value;
-  const resetInput = () => { e.target.value = ''; };
-
-  if(!mois){
-    statusEl.innerHTML = `<div class="error-msg">Choisissez d'abord le mois concerné par ce bulletin.</div>`;
-    resetInput();
-    return;
-  }
-  if(!/\.pdf$/i.test(file.name)){
-    statusEl.innerHTML = `<div class="error-msg">« ${file.name} » n'est pas un PDF — c'est le seul format accepté ici.</div>`;
-    resetInput();
-    return;
-  }
+// Logique d'envoi partagée entre l'ajout unitaire et l'import groupé
+async function uploadBulletin(collaborateurId, mois, typeDocument, file){
   const exercice = findExerciceForDate(`${mois}-01`);
-  if(!exercice){
-    statusEl.innerHTML = `<div class="error-msg">Aucun exercice comptable ne couvre ${mois}.</div>`;
-    resetInput();
-    return;
-  }
+  if(!exercice) return { ok:false, message:`Aucun exercice comptable ne couvre ${mois}.` };
 
-  const collaborateur = STATE.collaborateurs.find(c=>c.id===SALARIE_SELECTED_ID);
+  const collaborateur = STATE.collaborateurs.find(c=>c.id===collaborateurId);
   const { data: existant } = await sb.from('salaires')
     .select('id, document_id')
-    .eq('collaborateur_id', SALARIE_SELECTED_ID)
+    .eq('collaborateur_id', collaborateurId)
     .eq('mois', mois)
+    .eq('type_document', typeDocument)
     .maybeSingle();
 
   let importId = existant?.document_id;
@@ -1080,17 +1113,13 @@ async function handleSalaireFile(e){
     const { data: importRow, error: importErr } = await sb.from('imports').insert({
       exercice_id: exercice.id, type_import: 'salaire', mois, nom_fichier: file.name, statut: 'importé'
     }).select().single();
-    if(importErr){ statusEl.innerHTML = `<div class="error-msg">Erreur : ${importErr.message}</div>`; resetInput(); return; }
+    if(importErr) return { ok:false, message: importErr.message };
     importId = importRow.id;
   }
 
-  const path = `${SALARIE_SELECTED_ID}/${mois}_${Date.now()}_${sanitizeFilename(file.name)}`;
+  const path = `${collaborateurId}/${mois}_${typeDocument}_${Date.now()}_${sanitizeFilename(file.name)}`;
   const { error: uploadErr } = await sb.storage.from('bulletins-salaire').upload(path, file, { upsert:true });
-  if(uploadErr){
-    statusEl.innerHTML = `<div class="error-msg">Erreur lors de l'envoi : ${uploadErr.message}</div>`;
-    resetInput();
-    return;
-  }
+  if(uploadErr) return { ok:false, message: uploadErr.message };
   await sb.from('imports').update({ chemin_storage: path }).eq('id', importId);
 
   if(existant){
@@ -1098,18 +1127,141 @@ async function handleSalaireFile(e){
   } else {
     const { error: salErr } = await sb.from('salaires').insert({
       exercice_id: exercice.id,
-      collaborateur_id: SALARIE_SELECTED_ID,
+      collaborateur_id: collaborateurId,
       mois,
+      type_document: typeDocument,
       affectation: collaborateur?.affectation || null,
       document_id: importId,
       statut: 'a_verifier'
     });
-    if(salErr){ statusEl.innerHTML = `<div class="error-msg">Erreur : ${salErr.message}</div>`; resetInput(); return; }
+    if(salErr) return { ok:false, message: salErr.message };
+  }
+  return { ok:true };
+}
+
+async function handleSalaireFile(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('salaire-import-status');
+  const moisInput = document.getElementById('salaire-mois-input');
+  const typeSelect = document.getElementById('salaire-type-select');
+  const mois = moisInput.value;
+  const typeDocument = typeSelect.value;
+  const resetInput = () => { e.target.value = ''; };
+
+  if(!mois){
+    statusEl.innerHTML = `<div class="error-msg">Choisissez d'abord le mois concerné par ce document.</div>`;
+    resetInput();
+    return;
+  }
+  if(!/\.pdf$/i.test(file.name)){
+    statusEl.innerHTML = `<div class="error-msg">« ${file.name} » n'est pas un PDF — c'est le seul format accepté ici.</div>`;
+    resetInput();
+    return;
   }
 
-  statusEl.innerHTML = `<div class="badge green" style="font-size:13px;">Bulletin attaché ✔</div>`;
+  const res = await uploadBulletin(SALARIE_SELECTED_ID, mois, typeDocument, file);
+  if(!res.ok){
+    statusEl.innerHTML = `<div class="error-msg">Erreur : ${res.message}</div>`;
+    resetInput();
+    return;
+  }
+  statusEl.innerHTML = `<div class="badge green" style="font-size:13px;">Document attaché ✔</div>`;
   resetInput();
   moisInput.value = '';
+  loadSalairesLibrary();
+}
+
+function handleBulkFolderSelect(e){
+  const files = Array.from(e.target.files).filter(f=>/\.pdf$/i.test(f.name));
+  const preview = document.getElementById('salaire-bulk-preview');
+  if(files.length===0){
+    preview.innerHTML = `<div class="error-msg">Aucun fichier PDF trouvé dans ce dossier.</div>`;
+    return;
+  }
+  BULK_ROWS = files.map(file=>{
+    const { personSegment, typeDocument, mois } = parseNomFichierBulletin(file.name);
+    const collab = deviverCollaborateur(personSegment);
+    return { file, personSegment, collaborateurId: collab?.id || '', mois: mois || '', typeDocument };
+  });
+  renderBulkPreview();
+}
+
+function renderBulkPreview(){
+  const preview = document.getElementById('salaire-bulk-preview');
+  const nbOk = BULK_ROWS.filter(r=>r.collaborateurId && r.mois).length;
+  preview.innerHTML = `
+    <div class="hint" style="margin-bottom:10px;">${nbOk}/${BULK_ROWS.length} fichier(s) reconnu(s) automatiquement.</div>
+    <div style="overflow-x:auto;">
+    <table>
+      <thead><tr><th>Fichier</th><th>Salarié</th><th>Mois</th><th>Type</th></tr></thead>
+      <tbody>
+        ${BULK_ROWS.map((r,i)=>`
+          <tr style="${(!r.collaborateurId || !r.mois) ? 'background:rgba(220,38,38,.08);' : ''}">
+            <td style="font-size:12.5px;">${r.file.name}</td>
+            <td>
+              <select class="bulk-collab-select" data-idx="${i}" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;">
+                <option value="">— Choisir —</option>
+                ${STATE.collaborateurs.map(c=>`<option value="${c.id}" ${c.id===r.collaborateurId?'selected':''}>${c.nom}</option>`).join('')}
+                <option value="__new__">+ Nouveau salarié…</option>
+              </select>
+            </td>
+            <td><input type="month" class="bulk-mois-input" data-idx="${i}" value="${r.mois}" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;"></td>
+            <td>
+              <select class="bulk-type-select" data-idx="${i}" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;">
+                <option value="bulletin" ${r.typeDocument==='bulletin'?'selected':''}>Bulletin de salaire</option>
+                <option value="solde_tout_compte" ${r.typeDocument==='solde_tout_compte'?'selected':''}>Solde de tout compte</option>
+              </select>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+    <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+      <button class="btn" id="bulk-import-btn">Importer les ${BULK_ROWS.length} fichier(s)</button>
+      <span id="bulk-import-progress" class="hint"></span>
+    </div>
+  `;
+
+  preview.querySelectorAll('.bulk-collab-select').forEach(sel=>{
+    sel.addEventListener('change', async (e)=>{
+      const idx = +e.target.dataset.idx;
+      if(e.target.value !== '__new__'){ BULK_ROWS[idx].collaborateurId = e.target.value; return; }
+      const nom = prompt('Nom du nouveau salarié :', BULK_ROWS[idx].personSegment);
+      if(!nom){ renderBulkPreview(); return; }
+      const { data, error } = await sb.from('collaborateurs').insert({ nom, actif:true }).select().single();
+      if(error){ alert('Erreur : ' + error.message); renderBulkPreview(); return; }
+      STATE.collaborateurs.push(data);
+      BULK_ROWS.forEach(r=>{ if(!r.collaborateurId){ const m = deviverCollaborateur(r.personSegment); if(m) r.collaborateurId = m.id; } });
+      renderBulkPreview();
+    });
+  });
+  preview.querySelectorAll('.bulk-mois-input').forEach(inp=>{
+    inp.addEventListener('change', e=>{ BULK_ROWS[+e.target.dataset.idx].mois = e.target.value; });
+  });
+  preview.querySelectorAll('.bulk-type-select').forEach(sel=>{
+    sel.addEventListener('change', e=>{ BULK_ROWS[+e.target.dataset.idx].typeDocument = e.target.value; });
+  });
+  document.getElementById('bulk-import-btn').addEventListener('click', runBulkImport);
+}
+
+async function runBulkImport(){
+  const btn = document.getElementById('bulk-import-btn');
+  const progress = document.getElementById('bulk-import-progress');
+  const rows = BULK_ROWS.filter(r=>r.collaborateurId && r.mois);
+  const skipped = BULK_ROWS.length - rows.length;
+  if(rows.length===0){ progress.textContent = 'Aucune ligne complète à importer.'; return; }
+  btn.disabled = true;
+  let done = 0, erreurs = 0;
+  for(const r of rows){
+    progress.textContent = `Import en cours... ${done+1}/${rows.length}`;
+    const res = await uploadBulletin(r.collaborateurId, r.mois, r.typeDocument, r.file);
+    if(!res.ok) erreurs++;
+    done++;
+  }
+  progress.textContent = `Terminé : ${done-erreurs}/${rows.length} importé(s)${erreurs?`, ${erreurs} erreur(s)`:''}${skipped?`, ${skipped} ligne(s) ignorée(s) (salarié ou mois manquant)`:''}.`;
+  btn.disabled = false;
+  BULK_ROWS = [];
   loadSalairesLibrary();
 }
 
@@ -1123,7 +1275,7 @@ async function loadSalairesLibrary(){
     .order('mois', {ascending:false});
 
   if(!salaires || salaires.length===0){
-    container.innerHTML = `<div class="empty">Aucun bulletin déposé pour ce salarié.</div>`;
+    container.innerHTML = `<div class="empty">Aucun document déposé pour ce salarié.</div>`;
     return;
   }
 
@@ -1148,7 +1300,7 @@ async function loadSalairesLibrary(){
       </button>
       <div class="mois-content" data-annee-content-sal="${annee}" style="display:${isOpen?'block':'none'};border-top:1px solid var(--border);overflow-x:auto;">
         <table>
-          <thead><tr><th>Mois</th><th>Nom du fichier</th><th>Document original</th></tr></thead>
+          <thead><tr><th>Mois</th><th>Type</th><th>Nom du fichier</th><th>Document original</th></tr></thead>
           <tbody>
             ${liste.map(s=>{
               const moisLabel = s.mois ? new Date(s.mois+'-01').toLocaleDateString('fr-FR',{month:'long',year:'numeric'}) : '—';
@@ -1160,6 +1312,7 @@ async function loadSalairesLibrary(){
               return `
                 <tr data-import-id="${imp?.id || ''}">
                   <td style="text-transform:capitalize;">${moisLabel}</td>
+                  <td>${TYPE_DOCUMENT_LABELS[s.type_document] || 'Bulletin de salaire'}</td>
                   <td>${imp?.nom_fichier || '—'}</td>
                   <td>${docCell}</td>
                 </tr>`;
