@@ -1045,7 +1045,7 @@ function renderSalariesPage(){
     <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
       <div>
         <div style="font-weight:700;font-size:13.5px;">🔄 Extraction automatique</div>
-        <div class="hint" style="margin-top:2px;">Relit tous les documents déjà déposés dont les chiffres ne sont pas encore remplis, et les complète.</div>
+        <div class="hint" style="margin-top:2px;">Relit tous les documents pas encore validés manuellement et remplit/corrige leurs chiffres. Ne touche jamais à une ligne que vous avez vérifiée vous-même.</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <button class="btn secondary" id="scan-bulletins-btn">Scanner les documents déjà importés</button>
@@ -1299,11 +1299,26 @@ function analyserBulletinPdf(items){
   const mStatut = texte.match(/(Cadre|Employé|Employée|Apprenti|Ouvrier|Agent de maîtrise)\s+(\S+)\s+(\d{2}\/\d{2}\/\d{4})/);
   if(mStatut){ res.statutPro = mStatut[1]; res.niveau = mStatut[2]; }
 
+  // Ligne "Salaire brut X" juste avant "Santé" : source indépendante du tableau récap,
+  // fiable même quand la mise en page du tableau change (voir plus bas).
+  const mBrut = texte.match(/Salaire brut\s+([\d\s.,]+?)\s+Santé/);
+  if(mBrut) res.brut = parseFloat(mBrut[1].replace(/\s/g,'').replace(',','.'));
+
   const mNetSolde = texte.match(/somme nette de \**\s*([\d\s.,]+?)\s*Euros/i);
   if(mNetSolde) res.netPaye = parseFloat(mNetSolde[1].replace(/\s/g,'').replace(',','.'));
 
   const mNet = texte.match(/Net payé\s*:\s*([\d\s.,]+?)\s*euros/i);
   if(mNet) res.netPaye = parseFloat(mNet[1].replace(/\s/g,'').replace(',','.'));
+
+  // Le tableau récap n'a la colonne "Heures suppl." que les mois avec heures supplémentaires :
+  // sans détection dynamique, toutes les colonnes suivantes (Brut, Ch. patronales, Coût Global)
+  // se décaleraient d'une case les mois sans heures sup — repéré en comparant deux vrais
+  // bulletins d'un même salarié, l'un avec et l'autre sans heures supplémentaires.
+  const zoneEntete = texte.slice(0, texte.indexOf('Mensuel') > -1 ? texte.indexOf('Mensuel') : 300);
+  const aHeuresSuppl = /Heures\s+suppl\./.test(zoneEntete);
+  const idxBrut = aHeuresSuppl ? 4 : 2;
+  const idxChargesPatronales = aHeuresSuppl ? 10 : 8;
+  const idxCoutGlobal = aHeuresSuppl ? 12 : 10;
 
   // Isole le segment entre l'avant-dernière et la dernière occurrence de "Net payé"
   // (le tableau récap Mensuel/Annuel s'y trouve toujours, juste avant la ligne finale)
@@ -1316,10 +1331,10 @@ function analyserBulletinPdf(items){
     const fin = idxNetPaye[idxNetPaye.length-1];
     const segment = rawItems.slice(debut, fin);
     const bloc = extraireNombresDepuisItems(segment).slice(1); // ignore la valeur du "Net payé" du corps
-    if(bloc.length>=18){
-      res.brut = bloc[4];
-      res.chargesPatronales = bloc[10];
-      res.coutGlobal = bloc[12];
+    if(res.brut==null && bloc.length>idxBrut) res.brut = bloc[idxBrut];
+    if(bloc.length>idxCoutGlobal){
+      res.chargesPatronales = bloc[idxChargesPatronales];
+      res.coutGlobal = bloc[idxCoutGlobal];
     }
   }
 
@@ -1369,11 +1384,14 @@ async function scannerTousLesBulletins(){
   const statusEl = document.getElementById('scan-bulletins-status');
   const btn = document.getElementById('scan-bulletins-btn');
   statusEl.textContent = 'Recherche des documents à traiter...';
+  // Retraite tout ce qui n'a pas encore été validé manuellement (statut 'a_verifier'), pas
+  // seulement ce qui n'a jamais été scanné — permet de corriger une extraction automatique
+  // erronée sans jamais toucher à une ligne que vous avez vérifiée/modifiée vous-même.
   const { data: rows } = await sb.from('salaires')
     .select('*, imports:document_id(chemin_storage)')
-    .is('cout_global', null);
+    .eq('statut', 'a_verifier');
   const aTraiter = (rows||[]).filter(r=>r.imports?.chemin_storage);
-  if(aTraiter.length===0){ statusEl.textContent = 'Rien à extraire — tous les documents ont déjà leurs chiffres.'; return; }
+  if(aTraiter.length===0){ statusEl.textContent = 'Rien à extraire — tous les documents ont déjà leurs chiffres, ou ont été validés manuellement.'; return; }
 
   btn.disabled = true;
   let done = 0, ok = 0;
@@ -1381,7 +1399,11 @@ async function scannerTousLesBulletins(){
     statusEl.textContent = `Extraction en cours... ${done+1}/${aTraiter.length}`;
     const { data: blob, error } = await sb.storage.from('bulletins-salaire').download(r.imports.chemin_storage);
     if(!error && blob){
-      const reussi = await appliquerExtractionSurSalaire(r, r.collaborateur_id, blob);
+      // Réinitialise les champs extraits automatiquement avant de relancer l'extraction,
+      // pour que la correction du parseur s'applique aussi aux documents déjà scannés.
+      const rowAReextraire = { ...r, brut:null, charges_patronales:null, cout_global:null,
+        conges_n_1:null, conges_n:null, titres_restaurant:null };
+      const reussi = await appliquerExtractionSurSalaire(rowAReextraire, r.collaborateur_id, blob);
       if(reussi) ok++;
     }
     done++;
