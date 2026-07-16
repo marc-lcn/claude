@@ -7,8 +7,13 @@
 
 -- Un seul bulletin par salarié et par mois (la page "Salariés" remplace le
 -- document existant plutôt que d'en recréer un nouveau pour le même mois).
-alter table salaires
-  add constraint salaires_collaborateur_mois_unique unique (collaborateur_id, mois);
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'salaires_collaborateur_mois_unique') then
+    alter table salaires
+      add constraint salaires_collaborateur_mois_unique unique (collaborateur_id, mois);
+  end if;
+end $$;
 
 drop policy if exists "dirigeant_stockage_bulletins_salaire" on storage.objects;
 
