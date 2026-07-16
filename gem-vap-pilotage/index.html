@@ -1035,6 +1035,10 @@ function renderSalariesPage(){
   if(autres.length>0) groupes.push({ code:'AUTRE', label:'Autres', liste: autres });
 
   content.innerHTML = `
+    <div class="section-title">📊 Récapitulatif de la masse salariale</div>
+    <div class="hint" style="margin-bottom:10px;">Pour chaque salarié actif : son dernier bulletin connu, son coût pour le magasin, ses congés. Se met à jour automatiquement dès qu'un bulletin est complété ci-dessous — inutile de le refaire à la main chaque mois.</div>
+    <div id="salaires-recap"><div class="empty">Chargement...</div></div>
+
     <div class="section-title">📦 Import groupé (plusieurs fichiers à la fois)</div>
     <div class="card">
       <div class="hint">Sélectionnez le dossier qui contient tous les PDF (peu importe s'ils sont répartis dans des sous-dossiers par salarié). Le salarié, le mois et le type de document sont devinés à partir du nom de chaque fichier (ex: « PERRET_Audrey_Bulletin_Juin_2026.pdf ») — vérifiez et corrigez les lignes en rouge avant de valider.</div>
@@ -1090,7 +1094,78 @@ function renderSalariesPage(){
   document.getElementById('salaire-file-input').addEventListener('change', handleSalaireFile);
   document.getElementById('salaire-bulk-input').addEventListener('change', handleBulkFolderSelect);
 
+  loadRecapSalaires();
   loadSalairesLibrary();
+}
+
+async function loadRecapSalaires(){
+  const container = document.getElementById('salaires-recap');
+  if(!container) return;
+
+  const { data: bulletins } = await sb.from('salaires')
+    .select('*')
+    .eq('type_document', 'bulletin')
+    .order('mois', {ascending:false});
+
+  const dernierParCollab = {};
+  (bulletins||[]).forEach(s=>{
+    if(!dernierParCollab[s.collaborateur_id]) dernierParCollab[s.collaborateur_id] = s;
+  });
+
+  const groupes = affectationsDisponibles().map(code=>{
+    const magasin = STATE.magasins.find(m=>m.code===code);
+    const label = magasin ? magasin.nom : (code==='COMMUN' ? 'Commun' : code==='DIRIGEANT' ? 'Dirigeant' : code);
+    return { code, label, liste: STATE.collaborateurs.filter(c=>c.affectation===code) };
+  }).filter(g=>g.liste.length>0);
+  const idsGroupes = new Set(groupes.flatMap(g=>g.liste.map(c=>c.id)));
+  const autres = STATE.collaborateurs.filter(c=>!idsGroupes.has(c.id));
+  if(autres.length>0) groupes.push({ code:'AUTRE', label:'Autres', liste: autres });
+
+  let grandTotalCout = 0;
+  let manqueDesChiffres = false;
+
+  const groupesHtml = groupes.map(g=>{
+    let totalCout = 0;
+    const rows = g.liste.map(c=>{
+      const s = dernierParCollab[c.id];
+      if(s?.cout_global != null) totalCout += Number(s.cout_global);
+      if(!s || s.cout_global == null) manqueDesChiffres = true;
+      const moisLabel = s?.mois ? new Date(s.mois+'-01').toLocaleDateString('fr-FR',{month:'short',year:'numeric'}) : '—';
+      return `
+        <tr>
+          <td>${c.nom}</td>
+          <td>${c.poste || '—'}</td>
+          <td>${c.statut || '—'}</td>
+          <td style="text-transform:capitalize;">${moisLabel}</td>
+          <td>${s?.net_paye!=null ? fmtEUR(s.net_paye) : '—'}</td>
+          <td>${s?.cout_global!=null ? fmtEUR(s.cout_global) : '—'}</td>
+          <td>${s?.conges_n_1!=null ? s.conges_n_1+' j' : '—'}</td>
+          <td>${s?.conges_n!=null ? s.conges_n+' j' : '—'}</td>
+        </tr>`;
+    }).join('');
+    grandTotalCout += totalCout;
+    return `
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px;">
+      <div style="padding:14px 18px;font-weight:700;font-size:14px;display:flex;justify-content:space-between;align-items:center;">
+        <span>${g.label}</span>
+        <span style="font-weight:600;color:var(--muted);font-size:12.5px;">Masse salariale (coût employeur) : ${fmtEUR(totalCout)}</span>
+      </div>
+      <div style="overflow-x:auto;border-top:1px solid var(--border);">
+        <table>
+          <thead><tr><th>Salarié</th><th>Poste</th><th>Statut</th><th>Dernier bulletin</th><th>Net payé</th><th>Coût employeur</th><th>Congés N-1</th><th>Congés N</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = groupesHtml + `
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:14.5px;margin-bottom:14px;">
+      <span>Total masse salariale (tous magasins, coût employeur)</span>
+      <span>${fmtEUR(grandTotalCout)}</span>
+    </div>
+    ${manqueDesChiffres ? `<div class="hint" style="margin-bottom:14px;">Certaines cases affichent « — » : le document est attaché mais ses chiffres (brut, net, coût, congés) n'ont pas encore été saisis — dépliez « ✏️ Chiffres » sur la ligne correspondante ci-dessous pour les compléter.</div>` : ''}
+  `;
 }
 
 // Logique d'envoi partagée entre l'ajout unitaire et l'import groupé
@@ -1300,7 +1375,7 @@ async function loadSalairesLibrary(){
       </button>
       <div class="mois-content" data-annee-content-sal="${annee}" style="display:${isOpen?'block':'none'};border-top:1px solid var(--border);overflow-x:auto;">
         <table>
-          <thead><tr><th>Mois</th><th>Type</th><th>Nom du fichier</th><th>Document original</th></tr></thead>
+          <thead><tr><th>Mois</th><th>Type</th><th>Nom du fichier</th><th>Document original</th><th>Chiffres</th></tr></thead>
           <tbody>
             ${liste.map(s=>{
               const moisLabel = s.mois ? new Date(s.mois+'-01').toLocaleDateString('fr-FR',{month:'long',year:'numeric'}) : '—';
@@ -1309,12 +1384,31 @@ async function loadSalairesLibrary(){
                 ? `<a href="#" class="voir-doc-link-sal" data-path="${imp.chemin_storage}" style="color:var(--blue);font-weight:600;text-decoration:none;">📎 Voir le document</a>
                    <label class="btn secondary small" style="margin-left:6px;cursor:pointer;">Remplacer<input type="file" class="doc-input-sal" accept=".pdf" hidden></label>`
                 : `<label class="btn small" style="cursor:pointer;">+ Attacher le fichier<input type="file" class="doc-input-sal" accept=".pdf" hidden></label>`;
+              const champ = (nom, label, step) => `<div class="field" style="min-width:110px;"><label>${label}</label><input type="number" step="${step}" class="detail-input" data-champ="${nom}" value="${s[nom] ?? ''}"></div>`;
               return `
                 <tr data-import-id="${imp?.id || ''}">
                   <td style="text-transform:capitalize;">${moisLabel}</td>
                   <td>${TYPE_DOCUMENT_LABELS[s.type_document] || 'Bulletin de salaire'}</td>
                   <td>${imp?.nom_fichier || '—'}</td>
                   <td>${docCell}</td>
+                  <td><button class="btn secondary small toggle-detail-sal" data-salaire-id="${s.id}">✏️ Chiffres</button></td>
+                </tr>
+                <tr class="detail-row-sal" data-detail-for="${s.id}" style="display:none;">
+                  <td colspan="5" style="background:var(--bg);">
+                    <div style="display:flex;flex-wrap:wrap;gap:10px;padding:14px 4px;">
+                      ${champ('brut','Brut','0.01')}
+                      ${champ('net_paye','Net payé','0.01')}
+                      ${champ('charges_patronales','Charges patronales','0.01')}
+                      ${champ('cout_global','Coût employeur','0.01')}
+                      ${champ('titres_restaurant','Titres restaurant','0.01')}
+                      ${champ('conges_n_1','Congés N-1','0.5')}
+                      ${champ('conges_n','Congés N','0.5')}
+                      ${champ('heures_sup','Heures sup','0.5')}
+                      ${champ('prime','Prime','0.01')}
+                      <div class="field" style="min-width:160px;"><label>Arrêt maladie</label><input type="text" class="detail-input" data-champ="maladie_arret" value="${(s.maladie_arret||'').replace(/"/g,'&quot;')}"></div>
+                      <div class="field" style="align-self:flex-end;"><button class="btn small save-detail-sal-btn" data-salaire-id="${s.id}">Enregistrer</button></div>
+                    </div>
+                  </td>
                 </tr>`;
             }).join('')}
           </tbody>
@@ -1341,6 +1435,30 @@ async function loadSalairesLibrary(){
     if(docInput) docInput.addEventListener('change', (e)=>handleDocumentUpload('bulletins-salaire', id, e.target.files[0], loadSalairesLibrary));
     const voirLink = tr.querySelector('.voir-doc-link-sal');
     if(voirLink) voirLink.addEventListener('click', (e)=>{ e.preventDefault(); voirDocument('bulletins-salaire', voirLink.dataset.path); });
+  });
+
+  container.querySelectorAll('.toggle-detail-sal').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const detailRow = container.querySelector(`tr[data-detail-for="${btn.dataset.salaireId}"]`);
+      if(!detailRow) return;
+      detailRow.style.display = detailRow.style.display==='none' ? 'table-row' : 'none';
+    });
+  });
+
+  container.querySelectorAll('.save-detail-sal-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const detailRow = btn.closest('tr');
+      const updates = { statut: 'valide_manuel' };
+      detailRow.querySelectorAll('.detail-input').forEach(inp=>{
+        const c = inp.dataset.champ;
+        updates[c] = c==='maladie_arret' ? (inp.value.trim() || null) : (inp.value===''? null : Number(inp.value));
+      });
+      const { error } = await sb.from('salaires').update(updates).eq('id', btn.dataset.salaireId);
+      if(error){ toast('Erreur : ' + error.message); return; }
+      toast('Chiffres enregistrés ✔');
+      loadRecapSalaires();
+      loadSalairesLibrary();
+    });
   });
 }
 
