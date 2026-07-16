@@ -12,6 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js"></script>
 <style>
 :root{
   --navy:#11153a;
@@ -211,6 +212,10 @@ const SUPABASE_URL = "https://qulvninnozpoefmptvnk.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1bHZuaW5ub3pwb2VmbXB0dm5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2OTA3MjgsImV4cCI6MjA5OTI2NjcyOH0.OciOmKi8DFre1_Z2_7WDFcBqkYeCjf_Pxyco19ZFit8";
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+if(window.pdfjsLib){
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js';
+}
 
 /* ============================================================
    ETAT GLOBAL
@@ -1036,7 +1041,17 @@ function renderSalariesPage(){
 
   content.innerHTML = `
     <div class="section-title">📊 Récapitulatif de la masse salariale</div>
-    <div class="hint" style="margin-bottom:10px;">Pour chaque salarié actif : son dernier bulletin connu, son coût pour le magasin, ses congés. Se met à jour automatiquement dès qu'un bulletin est complété ci-dessous — inutile de le refaire à la main chaque mois.</div>
+    <div class="hint" style="margin-bottom:10px;">Pour chaque salarié actif : son dernier bulletin connu, son coût pour le magasin, ses congés. Brut, net payé, charges et coût global sont extraits automatiquement du PDF à chaque import (mois, congés et titres resto restent à vérifier/compléter à la main).</div>
+    <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+      <div>
+        <div style="font-weight:700;font-size:13.5px;">🔄 Extraction automatique</div>
+        <div class="hint" style="margin-top:2px;">Relit tous les documents déjà déposés dont les chiffres ne sont pas encore remplis, et les complète.</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button class="btn secondary" id="scan-bulletins-btn">Scanner les documents déjà importés</button>
+        <span id="scan-bulletins-status" class="hint"></span>
+      </div>
+    </div>
     <div id="salaires-recap"><div class="empty">Chargement...</div></div>
 
     <div class="section-title">📦 Import groupé (plusieurs fichiers à la fois)</div>
@@ -1093,6 +1108,7 @@ function renderSalariesPage(){
   });
   document.getElementById('salaire-file-input').addEventListener('change', handleSalaireFile);
   document.getElementById('salaire-bulk-input').addEventListener('change', handleBulkFolderSelect);
+  document.getElementById('scan-bulletins-btn').addEventListener('click', scannerTousLesBulletins);
 
   loadRecapSalaires();
   loadSalairesLibrary();
@@ -1136,6 +1152,7 @@ async function loadRecapSalaires(){
           <td>${c.nom}</td>
           <td>${c.poste || '—'}</td>
           <td>${c.statut || '—'}</td>
+          <td>${c.niveau || '—'}</td>
           <td>${calculerAnciennete(c.date_entree, c.date_sortie)}</td>
           <td style="text-transform:capitalize;">${moisLabel}</td>
           <td>${s?.net_paye!=null ? fmtEUR(s.net_paye) : '—'}</td>
@@ -1154,7 +1171,7 @@ async function loadRecapSalaires(){
       </div>
       <div style="overflow-x:auto;border-top:1px solid var(--border);">
         <table>
-          <thead><tr><th>Salarié</th><th>Poste</th><th>Statut</th><th>Ancienneté</th><th>Dernier bulletin</th><th>Net payé</th><th>Titres resto</th><th>Coût global</th><th>Congés N-1</th><th>Congés N</th></tr></thead>
+          <thead><tr><th>Salarié</th><th>Poste</th><th>Statut</th><th>Niveau</th><th>Ancienneté</th><th>Dernier bulletin</th><th>Net payé</th><th>Titres resto</th><th>Coût global</th><th>Congés N-1</th><th>Congés N</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -1184,6 +1201,140 @@ function calculerAnciennete(dateEntree, dateSortie){
   return `${ans} an${ans>1?'s':''} ${moisRestants} mois`;
 }
 
+/* ============================================================
+   EXTRACTION AUTOMATIQUE DES BULLETINS PDF
+   ============================================================ */
+async function extraireItemsPdf(fileOrBlob){
+  const buf = await fileOrBlob.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+  let items = [];
+  for(let i=1;i<=pdf.numPages;i++){
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    items = items.concat(content.items.map(it=>it.str));
+  }
+  return items;
+}
+
+// Reconstruit les nombres à partir du tableau d'items pdf.js : évite l'ambiguïté du
+// séparateur de milliers français ("1" " " "975.16") vs deux nombres adjacents distincts.
+function extraireNombresDepuisItems(arr){
+  const nombres = [];
+  for(let i=0;i<arr.length;i++){
+    const it = arr[i];
+    if(/^\d{1,3}$/.test(it) && arr[i+1]===' ' && /^\d{3}[.,]\d{2}$/.test(arr[i+2])){
+      nombres.push(parseFloat((it+arr[i+2]).replace(',','.')));
+      i += 2;
+    } else if(/^-?\d+[.,]\d{2}$/.test(it)){
+      nombres.push(parseFloat(it.replace(',','.')));
+    }
+  }
+  return nombres;
+}
+
+// Calé sur le modèle de bulletin GEM.VAP (ligne d'en-tête "##BULLETIN##MM-YYYY##...",
+// tableau récap Mensuel/Annuel en fin de document). Renvoie null pour tout champ non
+// reconnu avec certitude — jamais de valeur devinée au hasard.
+function analyserBulletinPdf(rawItems){
+  const texte = rawItems.join(' ').replace(/\s+/g,' ').trim();
+  const res = { typeDocument:null, mois:null, matricule:null, nom:null, niveau:null,
+    statutPro:null, brut:null, netPaye:null, chargesPatronales:null, coutGlobal:null };
+
+  const mHeader = texte.match(/##(BULLETIN|SOLDECPT)##(\d{2})-(\d{4})##(\d+)##([^#]+)##([^#]+)##(\d+)/);
+  if(mHeader){
+    res.typeDocument = mHeader[1]==='SOLDECPT' ? 'solde_tout_compte' : 'bulletin';
+    res.mois = `${mHeader[3]}-${mHeader[2]}`;
+    res.matricule = mHeader[4];
+    res.nom = `${mHeader[5]} ${mHeader[6]}`;
+  }
+
+  const mStatut = texte.match(/(Cadre|Employé|Employée|Apprenti|Ouvrier|Agent de maîtrise)\s+(\S+)\s+(\d{2}\/\d{2}\/\d{4})/);
+  if(mStatut){ res.statutPro = mStatut[1]; res.niveau = mStatut[2]; }
+
+  const mNetSolde = texte.match(/somme nette de \**\s*([\d\s.,]+?)\s*Euros/i);
+  if(mNetSolde) res.netPaye = parseFloat(mNetSolde[1].replace(/\s/g,'').replace(',','.'));
+
+  const mNet = texte.match(/Net payé\s*:\s*([\d\s.,]+?)\s*euros/i);
+  if(mNet) res.netPaye = parseFloat(mNet[1].replace(/\s/g,'').replace(',','.'));
+
+  // Isole le segment entre l'avant-dernière et la dernière occurrence de "Net payé"
+  // (le tableau récap Mensuel/Annuel s'y trouve toujours, juste avant la ligne finale)
+  const idxNetPaye = [];
+  for(let i=0;i<rawItems.length;i++){
+    if(rawItems[i]==='Net' && rawItems[i+2]==='payé') idxNetPaye.push(i);
+  }
+  if(idxNetPaye.length>=2){
+    const debut = idxNetPaye[idxNetPaye.length-2];
+    const fin = idxNetPaye[idxNetPaye.length-1];
+    const segment = rawItems.slice(debut, fin);
+    const bloc = extraireNombresDepuisItems(segment).slice(1); // ignore la valeur du "Net payé" du corps
+    if(bloc.length>=18){
+      res.brut = bloc[4];
+      res.chargesPatronales = bloc[10];
+      res.coutGlobal = bloc[12];
+    }
+  }
+  return res;
+}
+
+// Ne remplit que les champs actuellement vides — ne recouvre jamais une valeur déjà
+// saisie ou déjà vérifiée manuellement. Renvoie true si l'extraction a pu s'exécuter.
+async function appliquerExtractionSurSalaire(salaireRow, collaborateurId, fileOrBlob){
+  try{
+    const items = await extraireItemsPdf(fileOrBlob);
+    const ext = analyserBulletinPdf(items);
+
+    const updates = {};
+    if(salaireRow.brut==null && ext.brut!=null) updates.brut = ext.brut;
+    if(salaireRow.net_paye==null && ext.netPaye!=null) updates.net_paye = ext.netPaye;
+    if(salaireRow.charges_patronales==null && ext.chargesPatronales!=null) updates.charges_patronales = ext.chargesPatronales;
+    if(salaireRow.cout_global==null && ext.coutGlobal!=null) updates.cout_global = ext.coutGlobal;
+    if(Object.keys(updates).length>0){
+      await sb.from('salaires').update(updates).eq('id', salaireRow.id);
+    }
+
+    const collab = STATE.collaborateurs.find(c=>c.id===collaborateurId);
+    const collabUpdates = {};
+    if(collab && !collab.niveau && ext.niveau) collabUpdates.niveau = ext.niveau;
+    if(collab && !collab.matricule && ext.matricule) collabUpdates.matricule = ext.matricule;
+    if(Object.keys(collabUpdates).length>0){
+      await sb.from('collaborateurs').update(collabUpdates).eq('id', collaborateurId);
+    }
+    return true;
+  } catch(e){
+    console.error('Extraction PDF échouée', e);
+    return false;
+  }
+}
+
+async function scannerTousLesBulletins(){
+  const statusEl = document.getElementById('scan-bulletins-status');
+  const btn = document.getElementById('scan-bulletins-btn');
+  statusEl.textContent = 'Recherche des documents à traiter...';
+  const { data: rows } = await sb.from('salaires')
+    .select('*, imports:document_id(chemin_storage)')
+    .is('cout_global', null);
+  const aTraiter = (rows||[]).filter(r=>r.imports?.chemin_storage);
+  if(aTraiter.length===0){ statusEl.textContent = 'Rien à extraire — tous les documents ont déjà leurs chiffres.'; return; }
+
+  btn.disabled = true;
+  let done = 0, ok = 0;
+  for(const r of aTraiter){
+    statusEl.textContent = `Extraction en cours... ${done+1}/${aTraiter.length}`;
+    const { data: blob, error } = await sb.storage.from('bulletins-salaire').download(r.imports.chemin_storage);
+    if(!error && blob){
+      const reussi = await appliquerExtractionSurSalaire(r, r.collaborateur_id, blob);
+      if(reussi) ok++;
+    }
+    done++;
+  }
+  statusEl.textContent = `Terminé : ${ok}/${aTraiter.length} document(s) traité(s).`;
+  btn.disabled = false;
+  await loadReferenceData();
+  loadRecapSalaires();
+  loadSalairesLibrary();
+}
+
 // Logique d'envoi partagée entre l'ajout unitaire et l'import groupé
 async function uploadBulletin(collaborateurId, mois, typeDocument, file){
   const exercice = findExerciceForDate(`${mois}-01`);
@@ -1191,7 +1342,7 @@ async function uploadBulletin(collaborateurId, mois, typeDocument, file){
 
   const collaborateur = STATE.collaborateurs.find(c=>c.id===collaborateurId);
   const { data: existant } = await sb.from('salaires')
-    .select('id, document_id')
+    .select('*')
     .eq('collaborateur_id', collaborateurId)
     .eq('mois', mois)
     .eq('type_document', typeDocument)
@@ -1213,10 +1364,11 @@ async function uploadBulletin(collaborateurId, mois, typeDocument, file){
   if(uploadErr) return { ok:false, message: uploadErr.message };
   await sb.from('imports').update({ chemin_storage: path }).eq('id', importId);
 
+  let salaireRow = existant;
   if(existant){
     await sb.from('salaires').update({ document_id: importId }).eq('id', existant.id);
   } else {
-    const { error: salErr } = await sb.from('salaires').insert({
+    const { data: inserted, error: salErr } = await sb.from('salaires').insert({
       exercice_id: exercice.id,
       collaborateur_id: collaborateurId,
       mois,
@@ -1224,8 +1376,13 @@ async function uploadBulletin(collaborateurId, mois, typeDocument, file){
       affectation: collaborateur?.affectation || null,
       document_id: importId,
       statut: 'a_verifier'
-    });
+    }).select().single();
     if(salErr) return { ok:false, message: salErr.message };
+    salaireRow = inserted;
+  }
+
+  if(/\.pdf$/i.test(file.name) && window.pdfjsLib){
+    await appliquerExtractionSurSalaire(salaireRow, collaborateurId, file);
   }
   return { ok:true };
 }
@@ -1863,11 +2020,11 @@ function renderParametresPage(){
             <div class="field"><label>Poste</label><input type="text" id="new-collab-poste" placeholder="Ex : Vendeur"></div>
             <div class="field"><button class="btn" id="add-collab-btn">Ajouter</button></div>
           </div>
-          <div class="hint" style="margin:14px 0 10px 0;">Le magasin et le poste peuvent être changés à tout moment (mutation, promotion). Décochez « Actif » pour un salarié parti : il disparaît de la page « Salariés » et du reste de l'appli, sans que son historique de bulletins soit supprimé.</div>
+          <div class="hint" style="margin:14px 0 10px 0;">Le magasin et le poste peuvent être changés à tout moment (mutation, promotion). Le niveau se remplit tout seul lors du premier bulletin scanné, mais reste modifiable. Décochez « Actif » pour un salarié parti : il disparaît de la page « Salariés » et du reste de l'appli, sans que son historique de bulletins soit supprimé.</div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Nom</th><th>Magasin</th><th>Poste</th><th style="text-align:center;">Actif</th></tr></thead>
-              <tbody id="collab-tbody"><tr><td colspan="4" class="empty">Chargement...</td></tr></tbody>
+              <thead><tr><th>Nom</th><th>Magasin</th><th>Poste</th><th>Niveau</th><th style="text-align:center;">Actif</th></tr></thead>
+              <tbody id="collab-tbody"><tr><td colspan="5" class="empty">Chargement...</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -2314,7 +2471,7 @@ async function afficherLignesLieesCategorie(categorieId, tr, toutesCategories){
 async function loadCollaborateursAdmin(){
   const { data } = await sb.from('collaborateurs').select('*').order('affectation', {nullsFirst:false}).order('nom');
   const tbody = document.getElementById('collab-tbody');
-  if(!data || data.length===0){ tbody.innerHTML = `<tr><td colspan="4" class="empty">Aucun salarié.</td></tr>`; return; }
+  if(!data || data.length===0){ tbody.innerHTML = `<tr><td colspan="5" class="empty">Aucun salarié.</td></tr>`; return; }
   const affectations = affectationsDisponibles();
   tbody.innerHTML = data.map(c=>`
     <tr data-id="${c.id}" style="${c.actif?'':'opacity:.5;'}">
@@ -2325,6 +2482,7 @@ async function loadCollaborateursAdmin(){
         </select>
       </td>
       <td><input type="text" class="collab-poste-input" value="${(c.poste||'').replace(/"/g,'&quot;')}" placeholder="Poste (Vendeur, Responsable, Apprenti...)" style="width:100%;max-width:220px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;"></td>
+      <td><input type="text" class="collab-niveau-input" value="${(c.niveau||'').replace(/"/g,'&quot;')}" placeholder="—" style="width:100%;max-width:80px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;"></td>
       <td style="text-align:center;"><input type="checkbox" class="collab-actif-checkbox" ${c.actif?'checked':''} title="${c.actif?'Décocher pour retirer ce salarié des listes':'Cocher pour le réactiver'}"></td>
     </tr>`).join('');
 
@@ -2333,6 +2491,7 @@ async function loadCollaborateursAdmin(){
     const nomInput = tr.querySelector('.rename-collab-input');
     const affSelect = tr.querySelector('.collab-affectation-select');
     const posteInput = tr.querySelector('.collab-poste-input');
+    const niveauInput = tr.querySelector('.collab-niveau-input');
     const actifCheckbox = tr.querySelector('.collab-actif-checkbox');
 
     async function saveChamp(champ, valeur, message){
@@ -2347,6 +2506,7 @@ async function loadCollaborateursAdmin(){
     });
     affSelect.addEventListener('change', ()=> saveChamp('affectation', affSelect.value, 'Magasin mis à jour ✔'));
     posteInput.addEventListener('change', ()=> saveChamp('poste', posteInput.value.trim() || null, 'Poste mis à jour ✔'));
+    niveauInput.addEventListener('change', ()=> saveChamp('niveau', niveauInput.value.trim() || null, 'Niveau mis à jour ✔'));
 
     actifCheckbox.addEventListener('change', async ()=>{
       const { error } = await sb.from('collaborateurs').update({ actif: actifCheckbox.checked }).eq('id', id);
