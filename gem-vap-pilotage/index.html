@@ -1136,8 +1136,10 @@ async function loadRecapSalaires(){
           <td>${c.nom}</td>
           <td>${c.poste || '—'}</td>
           <td>${c.statut || '—'}</td>
+          <td>${calculerAnciennete(c.date_entree, c.date_sortie)}</td>
           <td style="text-transform:capitalize;">${moisLabel}</td>
           <td>${s?.net_paye!=null ? fmtEUR(s.net_paye) : '—'}</td>
+          <td>${s?.titres_restaurant!=null ? fmtEUR(s.titres_restaurant) : '—'}</td>
           <td>${s?.cout_global!=null ? fmtEUR(s.cout_global) : '—'}</td>
           <td>${s?.conges_n_1!=null ? s.conges_n_1+' j' : '—'}</td>
           <td>${s?.conges_n!=null ? s.conges_n+' j' : '—'}</td>
@@ -1148,11 +1150,11 @@ async function loadRecapSalaires(){
     <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px;">
       <div style="padding:14px 18px;font-weight:700;font-size:14px;display:flex;justify-content:space-between;align-items:center;">
         <span>${g.label}</span>
-        <span style="font-weight:600;color:var(--muted);font-size:12.5px;">Masse salariale (coût employeur) : ${fmtEUR(totalCout)}</span>
+        <span style="font-weight:600;color:var(--muted);font-size:12.5px;">Masse salariale (coût global) : ${fmtEUR(totalCout)}</span>
       </div>
       <div style="overflow-x:auto;border-top:1px solid var(--border);">
         <table>
-          <thead><tr><th>Salarié</th><th>Poste</th><th>Statut</th><th>Dernier bulletin</th><th>Net payé</th><th>Coût employeur</th><th>Congés N-1</th><th>Congés N</th></tr></thead>
+          <thead><tr><th>Salarié</th><th>Poste</th><th>Statut</th><th>Ancienneté</th><th>Dernier bulletin</th><th>Net payé</th><th>Titres resto</th><th>Coût global</th><th>Congés N-1</th><th>Congés N</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -1161,11 +1163,25 @@ async function loadRecapSalaires(){
 
   container.innerHTML = groupesHtml + `
     <div class="card" style="display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:14.5px;margin-bottom:14px;">
-      <span>Total masse salariale (tous magasins, coût employeur)</span>
+      <span>Total masse salariale (tous magasins, coût global)</span>
       <span>${fmtEUR(grandTotalCout)}</span>
     </div>
     ${manqueDesChiffres ? `<div class="hint" style="margin-bottom:14px;">Certaines cases affichent « — » : le document est attaché mais ses chiffres (brut, net, coût, congés) n'ont pas encore été saisis — dépliez « ✏️ Chiffres » sur la ligne correspondante ci-dessous pour les compléter.</div>` : ''}
   `;
+}
+
+function calculerAnciennete(dateEntree, dateSortie){
+  if(!dateEntree) return '—';
+  const debut = new Date(dateEntree+'T00:00:00');
+  const fin = dateSortie ? new Date(dateSortie+'T00:00:00') : new Date();
+  let mois = (fin.getFullYear()-debut.getFullYear())*12 + (fin.getMonth()-debut.getMonth());
+  if(fin.getDate() < debut.getDate()) mois--;
+  if(mois < 0) return '—';
+  const ans = Math.floor(mois/12);
+  const moisRestants = mois % 12;
+  if(ans===0) return `${moisRestants} mois`;
+  if(moisRestants===0) return `${ans} an${ans>1?'s':''}`;
+  return `${ans} an${ans>1?'s':''} ${moisRestants} mois`;
 }
 
 // Logique d'envoi partagée entre l'ajout unitaire et l'import groupé
