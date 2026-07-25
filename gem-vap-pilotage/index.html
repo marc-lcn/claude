@@ -31,12 +31,28 @@
   --green-bg:#e3f7e9; --green-text:#1c8a4b;
   --orange-bg:#fff3dc; --orange-text:#b5730a;
   --red-bg:#fde5e5; --red-text:#c22b2b;
+  /* Lot F : jetons de design partagés (rayons, ombres, courbe d'animation) —
+     réutilisés par tous les composants ci-dessous plutôt que des valeurs
+     ad hoc répétées partout. */
+  --radius-sm:10px;
+  --radius-lg:20px;
+  --shadow-sm:0 1px 2px rgba(17,21,58,.05);
+  --shadow-md:0 4px 16px -4px rgba(17,21,58,.12);
+  --shadow-lg:0 12px 32px -8px rgba(17,21,58,.18);
+  --ease:cubic-bezier(.4,0,.2,1);
 }
 *{box-sizing:border-box;}
 body{margin:0;font-family:'Segoe UI',system-ui,-apple-system,Arial,sans-serif;background:var(--bg);color:var(--text);}
 h1,h2,h3{margin:0 0 4px 0;}
 button{font-family:inherit;cursor:pointer;}
 input,select,textarea{font-family:inherit;}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px;}
+
+/* ---------- ICÔNES (SVG en ligne, sans dépendance externe) ---------- */
+.icon{width:18px;height:18px;flex-shrink:0;vertical-align:-4px;}
+.icon-spin{animation:iconSpin .8s linear infinite;}
+@keyframes iconSpin{to{transform:rotate(360deg);}}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
 
 /* ---------- LOGIN ---------- */
 #login-view{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--navy),var(--navy-light));}
@@ -55,15 +71,24 @@ input,select,textarea{font-family:inherit;}
 /* ---------- APP SHELL ---------- */
 #app-view{display:none;min-height:100vh;}
 .shell{display:flex;min-height:100vh;}
-.sidebar{width:230px;background:var(--navy);color:#cfd3ea;flex-shrink:0;padding:20px 14px;display:flex;flex-direction:column;}
+.sidebar{width:230px;background:var(--navy);color:#cfd3ea;flex-shrink:0;padding:calc(20px + env(safe-area-inset-top)) 14px calc(20px + env(safe-area-inset-bottom)) 14px;display:flex;flex-direction:column;position:relative;}
 .sidebar-logo{font-size:19px;font-weight:800;color:#fff;padding:6px 10px 22px 10px;}
 .sidebar-logo span{background:linear-gradient(90deg,var(--blue),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent;}
-.nav-item{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;margin-bottom:4px;font-size:14px;font-weight:600;color:#b7bbdc;text-decoration:none;background:none;border:none;width:100%;text-align:left;}
+.nav-item{display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:var(--radius-sm);margin-bottom:3px;font-size:14px;font-weight:600;color:#b7bbdc;text-decoration:none;background:none;border:none;width:100%;text-align:left;transition:background-color .15s var(--ease),color .15s var(--ease);}
+.nav-item .icon{opacity:.85;}
 .nav-item:hover{background:var(--navy-light);color:#fff;}
 .nav-item.active{background:linear-gradient(90deg,var(--blue),#4b6fff);color:#fff;}
+.nav-item.active .icon{opacity:1;}
 .sidebar-foot{margin-top:auto;padding-top:16px;border-top:1px solid rgba(255,255,255,.08);}
 .sidebar-foot .who{font-size:12px;color:#9fa4c9;margin-bottom:8px;}
-.btn-logout{width:100%;padding:9px;border-radius:9px;border:1px solid rgba(255,255,255,.15);background:none;color:#cfd3ea;font-size:13px;}
+.btn-logout{width:100%;padding:9px;border-radius:var(--radius-sm);border:1px solid rgba(255,255,255,.15);background:none;color:#cfd3ea;font-size:13px;transition:background-color .15s var(--ease);}
+@media(hover:hover){.btn-logout:hover{background:rgba(255,255,255,.06);}}
+
+.sidebar-close{display:none;}
+
+.sidebar-overlay{position:fixed;inset:0;background:rgba(10,12,30,.5);z-index:39;opacity:0;pointer-events:none;transition:opacity .2s var(--ease);}
+.sidebar-overlay.open{opacity:1;pointer-events:auto;}
+body.menu-open{overflow:hidden;}
 
 .main{flex:1;min-width:0;}
 .topbar{background:var(--card);padding:16px 28px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
@@ -71,11 +96,13 @@ input,select,textarea{font-family:inherit;}
 .content{padding:26px 28px;max-width:1200px;}
 
 /* mobile nav */
-.mobile-toggle{display:none;background:none;border:none;color:#fff;font-size:22px;}
+.mobile-toggle{display:none;background:none;border:none;color:var(--navy);align-items:center;justify-content:center;min-width:44px;min-height:44px;border-radius:var(--radius-sm);}
+@media(hover:hover){.mobile-toggle:hover{background:var(--bg);}}
 @media(max-width:820px){
-  .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:40;transform:translateX(-100%);transition:transform .2s;}
+  .sidebar{width:min(86vw,320px);position:fixed;left:0;top:0;bottom:0;z-index:40;transform:translateX(-100%);transition:transform .25s var(--ease);box-shadow:var(--shadow-lg);}
   .sidebar.open{transform:translateX(0);}
-  .mobile-toggle{display:block;}
+  .sidebar-close{display:flex;align-items:center;justify-content:center;position:absolute;top:calc(10px + env(safe-area-inset-top));right:10px;width:44px;height:44px;background:rgba(255,255,255,.08);border:none;border-radius:var(--radius-sm);color:#fff;}
+  .mobile-toggle{display:flex;}
   .content{padding:16px;}
   .topbar{padding:12px 16px;}
 }
@@ -86,41 +113,90 @@ input,select,textarea{font-family:inherit;}
 .grid-2{grid-template-columns:repeat(2,1fr);}
 @media(max-width:900px){.grid-4{grid-template-columns:repeat(2,1fr);} .grid-2{grid-template-columns:1fr;}}
 @media(max-width:520px){.grid-4{grid-template-columns:1fr;}}
-.card{background:var(--card);border-radius:16px;padding:20px;box-shadow:0 1px 3px rgba(20,22,50,.06);}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;box-shadow:var(--shadow-sm);transition:box-shadow .18s var(--ease),transform .18s var(--ease);}
 .kpi-label{font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:6px;}
 .kpi-value{font-size:24px;font-weight:800;}
 .kpi-sub{font-size:12px;color:var(--muted);margin-top:4px;}
+
+/* Cartes KPI du tableau de bord : accent coloré + icône + interactivité au clic.
+   Classe dédiée (pas .grid-4 générique) pour ne pas affecter les autres
+   grilles de 4 cartes de l'application (ex. Journal des ventes). */
+.kpi-grid{gap:14px;}
+.kpi-card{position:relative;overflow:hidden;}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--kpi-accent,var(--blue));}
+.kpi-accent-blue{--kpi-accent:var(--blue);background:linear-gradient(180deg,rgba(47,107,255,.055),transparent 65%);}
+.kpi-accent-navy{--kpi-accent:var(--navy);background:linear-gradient(180deg,rgba(17,21,58,.045),transparent 65%);}
+.kpi-accent-muted{--kpi-accent:var(--border);}
+.kpi-accent-green{--kpi-accent:var(--green-text);background:linear-gradient(180deg,rgba(28,138,75,.05),transparent 65%);}
+.kpi-accent-orange{--kpi-accent:var(--orange-text);background:linear-gradient(180deg,rgba(181,115,10,.06),transparent 65%);}
+.kpi-top{display:flex;align-items:center;gap:9px;margin-bottom:10px;}
+.kpi-icon{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9px;background:var(--kpi-accent,var(--blue));color:#fff;flex-shrink:0;}
+.kpi-icon .icon{width:16px;height:16px;}
+.kpi-card[role="button"]{cursor:pointer;}
+.kpi-card[role="button"]:active{transform:scale(.98);}
+@media(hover:hover){.kpi-card[role="button"]:hover{box-shadow:var(--shadow-md);transform:translateY(-2px);}}
+@media(max-width:520px){
+  .kpi-grid{gap:10px;}
+  .kpi-card{padding:14px 16px;}
+  .kpi-top{margin-bottom:6px;}
+  .kpi-icon{width:26px;height:26px;border-radius:8px;}
+  .kpi-icon .icon{width:14px;height:14px;}
+  .kpi-value{font-size:21px;}
+  .kpi-sub{font-size:11px;}
+}
 
 .section-title{font-size:15px;font-weight:700;margin:28px 0 12px 0;}
 
 /* ---------- FORMS ---------- */
 .form-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:end;}
-@media(max-width:820px){.form-row{grid-template-columns:1fr 1fr;}}
+@media(max-width:820px){.form-row{grid-template-columns:1fr 1fr;gap:14px;}}
 .form-row .field label{font-size:12.5px;}
-.form-row .field input,.form-row .field select{padding:9px 10px;border:1px solid var(--border);border-radius:9px;width:100%;font-size:13.5px;}
-.btn{padding:10px 18px;border:none;border-radius:9px;background:var(--blue);color:#fff;font-weight:700;font-size:13.5px;}
+.form-row .field input,.form-row .field select{padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);width:100%;font-size:13.5px;transition:border-color .15s var(--ease);}
+.form-row .field input:focus,.form-row .field select:focus{border-color:var(--blue);}
+.btn{padding:10px 18px;border:none;border-radius:var(--radius-sm);background:var(--blue);color:#fff;font-weight:700;font-size:13.5px;transition:filter .15s var(--ease),box-shadow .15s var(--ease),transform .1s var(--ease);}
 .btn.secondary{background:#eef1fb;color:var(--navy);}
 .btn.small{padding:6px 12px;font-size:12.5px;}
+.btn:active{transform:scale(.97);}
+@media(hover:hover){
+  .btn:hover{filter:brightness(1.06);box-shadow:var(--shadow-sm);}
+  .btn.secondary:hover{filter:none;background:#e3e8fa;}
+}
+@media(max-width:820px){
+  .btn,.btn.small{min-height:44px;padding-top:11px;padding-bottom:11px;}
+}
 
 /* ---------- TABLE ---------- */
 table{width:100%;border-collapse:collapse;font-size:13.5px;}
 th{text-align:left;color:var(--muted);font-weight:600;font-size:12px;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap;}
 td{padding:9px 10px;border-bottom:1px solid var(--border);white-space:nowrap;}
-.table-wrap{overflow-x:auto;background:var(--card);border-radius:16px;padding:6px 12px;}
+tbody tr:not(.ligne-fermee){transition:background-color .12s var(--ease);}
+@media(hover:hover){tbody tr:not(.ligne-fermee):hover{background:#f7f8fc;}}
+.table-wrap{
+  overflow-x:auto;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:6px 12px;
+  /* Ombres de bord discrètes signalant qu'il y a plus de contenu à faire défiler
+     horizontalement — technique CSS pure, disparaît automatiquement dès qu'on
+     atteint le bord correspondant, sans JavaScript. */
+  background-image:linear-gradient(to right,var(--card) 30%,rgba(255,255,255,0)),linear-gradient(to right,rgba(255,255,255,0),var(--card) 70%) 100% 0,radial-gradient(farthest-side at 0 50%,rgba(17,21,58,.12),rgba(0,0,0,0)),radial-gradient(farthest-side at 100% 50%,rgba(17,21,58,.12),rgba(0,0,0,0)) 100% 0;
+  background-repeat:no-repeat;background-color:var(--card);background-size:40px 100%,40px 100%,14px 100%,14px 100%;background-attachment:local,local,scroll,scroll;
+}
 .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:700;}
 .badge.green{background:var(--green-bg);color:var(--green-text);}
 .badge.orange{background:var(--orange-bg);color:var(--orange-text);}
 .badge.red{background:var(--red-bg);color:var(--red-text);}
 .row-select,.row-input{padding:5px 6px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;max-width:180px;}
+@media(max-width:820px){.row-select,.row-input{min-height:40px;padding:8px 6px;}}
 .tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
-.tab-btn{padding:8px 14px;border-radius:999px;border:1px solid var(--border);background:#fff;font-size:12.5px;font-weight:700;color:var(--muted);}
+.tab-btn{padding:8px 14px;border-radius:999px;border:1px solid var(--border);background:#fff;font-size:12.5px;font-weight:700;color:var(--muted);transition:background-color .15s var(--ease),color .15s var(--ease),border-color .15s var(--ease);}
 .tab-btn.active{background:var(--navy);color:#fff;border-color:var(--navy);}
-.upload-box{border:2px dashed var(--border);border-radius:14px;padding:26px;text-align:center;color:var(--muted);font-size:13.5px;background:#fbfcfe;}
+@media(max-width:820px){.tab-btn{min-height:40px;}}
+.upload-box{border:2px dashed var(--border);border-radius:var(--radius-lg);padding:26px;text-align:center;color:var(--muted);font-size:13.5px;background:#fbfcfe;transition:border-color .15s var(--ease),background-color .15s var(--ease);}
 .upload-box input{display:none;}
 .hint{font-size:12.5px;color:var(--muted);margin-top:6px;}
-.toast{position:fixed;bottom:22px;right:22px;background:var(--navy);color:#fff;padding:12px 18px;border-radius:10px;font-size:13.5px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:100;}
-.empty{color:var(--muted);font-size:13.5px;padding:20px;text-align:center;}
-.update-banner{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;max-width:420px;width:calc(100% - 32px);background:var(--navy);color:#fff;padding:16px 18px;border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.3);z-index:200;}
+.toast{position:fixed;bottom:22px;right:22px;background:var(--navy);color:#fff;padding:12px 18px;border-radius:var(--radius-sm);font-size:13.5px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:100;animation:fadeInUp .2s var(--ease);}
+.empty{color:var(--muted);font-size:13.5px;padding:36px 20px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;animation:fadeInUp .25s var(--ease);}
+.empty::before{content:'';width:34px;height:34px;background:var(--border);-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-6l-2 3h-4l-2-3H2'/%3E%3Cpath d='M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-6l-2 3h-4l-2-3H2'/%3E%3Cpath d='M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'/%3E%3C/svg%3E") center/contain no-repeat;}
+.empty-loading::before{background:var(--muted);-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 1 1-6.219-8.56'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 1 1-6.219-8.56'/%3E%3C/svg%3E");animation:iconSpin .8s linear infinite;}
+.update-banner{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;max-width:420px;width:calc(100% - 32px);background:var(--navy);color:#fff;padding:16px 18px;border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);z-index:200;animation:fadeInUp .25s var(--ease);}
 .update-banner h4{margin:0 0 8px 0;font-size:14.5px;font-weight:800;}
 .update-banner ul{margin:8px 0 14px 0;padding-left:18px;font-size:12.5px;color:#cfd3ea;line-height:1.5;}
 .update-banner .update-actions{display:flex;gap:10px;justify-content:flex-end;}
@@ -132,10 +208,20 @@ tr.ligne-fermee input[type="number"]{background:#e5e7f0;}
 .pill-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;}
 .checklist-item{display:flex;align-items:flex-start;gap:12px;padding:12px 4px;border-bottom:1px solid var(--border);}
 .checklist-item:last-child{border-bottom:none;}
-.checklist-icon{font-size:18px;line-height:1.4;}
+.checklist-icon{line-height:1.4;display:inline-flex;}
+.checklist-icon .icon{width:19px;height:19px;}
+.checklist-icon.ok .icon{color:var(--green-text);}
+.checklist-icon.warn .icon{color:var(--orange-text);}
+.checklist-icon.pending .icon{color:var(--muted);}
 .checklist-label{font-weight:700;font-size:13.5px;}
 .checklist-detail{font-size:12.5px;color:var(--muted);margin-top:2px;}
-.param-toggle{width:100%;text-align:left;background:none;border:none;font-weight:700;font-size:15px;cursor:pointer;color:var(--text);display:flex;justify-content:space-between;align-items:center;padding:16px 20px;}
+@media(max-width:520px){
+  .checklist-item{padding:10px 2px;gap:9px;}
+  .checklist-icon .icon{width:17px;height:17px;}
+  .checklist-label{font-size:13px;}
+  .checklist-detail{font-size:11.5px;}
+}
+.param-toggle{width:100%;text-align:left;background:none;border:none;font-weight:700;font-size:15px;cursor:pointer;color:var(--text);display:flex;justify-content:space-between;align-items:center;padding:16px 20px;transition:background-color .15s var(--ease);}
 .param-toggle:hover{background:#f7f8fc;}
 .mois-content::-webkit-scrollbar{height:10px;}
 .mois-content::-webkit-scrollbar-thumb{background:#c7cbe0;border-radius:6px;}
@@ -150,10 +236,10 @@ tr.ligne-fermee input[type="number"]{background:#e5e7f0;}
 .hscroll-body::-webkit-scrollbar-thumb{background:#c7cbe0;border-radius:6px;}
 .hscroll-body::-webkit-scrollbar-track{background:#f2f4fa;}
 .pill-toggle{padding:8px 16px;border-radius:999px;border:1px solid var(--border);background:#fff;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;transition:all .15s;}
-.pill-toggle:hover{border-color:var(--blue);color:var(--navy);}
+@media(hover:hover){.pill-toggle:hover{border-color:var(--blue);color:var(--navy);}}
 .pill-toggle.active{background:var(--navy);color:#fff;border-color:var(--navy);}
 .grid-3{grid-template-columns:repeat(3,1fr);}
-@media(max-width:820px){.grid-3{grid-template-columns:1fr;}}
+@media(max-width:820px){.grid-3{grid-template-columns:1fr;} .pill-toggle,.tab-btn{min-height:40px;display:inline-flex;align-items:center;}}
 </style>
 </head>
 <body>
@@ -186,27 +272,29 @@ tr.ligne-fermee input[type="number"]{background:#e5e7f0;}
 <div id="app-view">
   <div class="shell">
     <aside class="sidebar" id="sidebar">
+      <button class="sidebar-close" id="sidebar-close-btn" aria-label="Fermer le menu"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       <div class="sidebar-logo">GEM.VAP <span>Pilotage</span></div>
-      <button class="nav-item active" data-page="dashboard">📊 Tableau de bord</button>
-      <button class="nav-item" data-page="ca">🧾 Saisie du CA</button>
-      <button class="nav-item" data-page="banque">🏦 Import bancaire</button>
-      <button class="nav-item" data-page="salaries">👥 Salariés</button>
-      <button class="nav-item" data-page="vendeurs">🏆 CA par vendeur</button>
-      <button class="nav-item" data-page="controle">✅ Opérations à contrôler</button>
-      <button class="nav-item" data-page="analyse">🏬 Analyse par magasin</button>
-      <button class="nav-item" data-page="journal">🧾 Journal des ventes</button>
-      <button class="nav-item" data-page="parametres">⚙️ Paramètres</button>
+      <button class="nav-item active" data-page="dashboard"></button>
+      <button class="nav-item" data-page="ca"></button>
+      <button class="nav-item" data-page="banque"></button>
+      <button class="nav-item" data-page="salaries"></button>
+      <button class="nav-item" data-page="vendeurs"></button>
+      <button class="nav-item" data-page="controle"></button>
+      <button class="nav-item" data-page="analyse"></button>
+      <button class="nav-item" data-page="journal"></button>
+      <button class="nav-item" data-page="parametres"></button>
       <div class="sidebar-foot">
         <div class="who" id="who-label"></div>
         <div class="app-version" id="app-version-label"></div>
         <button class="btn-logout" id="logout-btn">Se déconnecter</button>
       </div>
     </aside>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
     <div class="main">
       <div class="topbar">
         <div style="display:flex;align-items:center;gap:10px;">
-          <button class="mobile-toggle" id="mobile-toggle">☰</button>
+          <button class="mobile-toggle" id="mobile-toggle" aria-label="Ouvrir le menu"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg></button>
           <h2 id="page-title">Tableau de bord</h2>
         </div>
       </div>
@@ -236,6 +324,35 @@ let STATE = {
   regles: [],
   page: 'dashboard'
 };
+
+/* ============================================================
+   ICÔNES (Lot F) — SVG en ligne, dans le style de Lucide Icons (licence
+   MIT), sans dépendance externe ni script tiers : aucun impact sur le
+   fonctionnement hors-ligne du service worker, aucune requête réseau
+   supplémentaire. Les chemins ci-dessous sont un jeu réduit, choisi pour
+   couvrir la navigation, le tableau de bord et les indicateurs d'état —
+   pas un remplacement exhaustif de chaque emoji de l'application.
+   ============================================================ */
+const ICON_PATHS = {
+  dashboard: '<rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/>',
+  ca: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h.01M18 12h.01"/>',
+  banque: '<path d="M2 10 12 4l10 6"/><path d="M5 10v11"/><path d="M9 10v11"/><path d="M15 10v11"/><path d="M19 10v11"/><path d="M3 21h18"/>',
+  salaries: '<path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  vendeurs: '<circle cx="12" cy="8" r="6"/><path d="M15.5 13.5 17 22l-5-3-5 3 1.5-8.5"/>',
+  controle: '<circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 5-5"/>',
+  analyse: '<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
+  journal: '<path d="M12 7c-2-2-5-2.5-8-2v13c3-.5 6 0 8 2 2-2 5-2.5 8-2V5c-3-.5-6 0-8 2z"/>',
+  parametres: '<line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="18" r="2"/>',
+  tickets: '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  checkCircle: '<circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 5-5"/>',
+  alertCircle: '<circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
+  alertTriangle: '<path d="M12 2 1 21h22L12 2z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>'
+};
+function icon(nom, classe){
+  return `<svg class="icon${classe?' '+classe:''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[nom]||''}</svg>`;
+}
 
 function fmtEUR(n){
   if(n === null || n === undefined || isNaN(n)) return '—';
@@ -404,12 +521,42 @@ function affectationsDisponibles(){
 /* ============================================================
    NAVIGATION
    ============================================================ */
+const NAV_ITEMS = {
+  dashboard: { icon:'dashboard', label:'Tableau de bord' },
+  ca: { icon:'ca', label:'Saisie du CA' },
+  banque: { icon:'banque', label:'Import bancaire' },
+  salaries: { icon:'salaries', label:'Salariés' },
+  vendeurs: { icon:'vendeurs', label:'CA par vendeur' },
+  controle: { icon:'controle', label:'Opérations à contrôler' },
+  analyse: { icon:'analyse', label:'Analyse par magasin' },
+  journal: { icon:'journal', label:'Journal des ventes' },
+  parametres: { icon:'parametres', label:'Paramètres' }
+};
 document.querySelectorAll('.nav-item[data-page]').forEach(btn=>{
+  const cfg = NAV_ITEMS[btn.dataset.page];
+  if(cfg) btn.innerHTML = `${icon(cfg.icon)}<span>${cfg.label}</span>`;
   btn.addEventListener('click', ()=>goToPage(btn.dataset.page));
 });
+
+// Menu mobile : voile, bouton fermer, blocage du scroll arrière — voir
+// aussi fermerMenu() appelé depuis goToPage() à chaque navigation.
+const sidebarEl = document.getElementById('sidebar');
+const sidebarOverlayEl = document.getElementById('sidebar-overlay');
+function ouvrirMenu(){
+  sidebarEl.classList.add('open');
+  sidebarOverlayEl.classList.add('open');
+  document.body.classList.add('menu-open');
+}
+function fermerMenu(){
+  sidebarEl.classList.remove('open');
+  sidebarOverlayEl.classList.remove('open');
+  document.body.classList.remove('menu-open');
+}
 document.getElementById('mobile-toggle').addEventListener('click', ()=>{
-  document.getElementById('sidebar').classList.toggle('open');
+  sidebarEl.classList.contains('open') ? fermerMenu() : ouvrirMenu();
 });
+sidebarOverlayEl.addEventListener('click', fermerMenu);
+document.getElementById('sidebar-close-btn').addEventListener('click', fermerMenu);
 
 const PAGE_TITLES = {
   dashboard: 'Tableau de bord',
@@ -429,7 +576,7 @@ function goToPage(page){
     b.classList.toggle('active', b.dataset.page===page);
   });
   document.getElementById('page-title').textContent = PAGE_TITLES[page];
-  document.getElementById('sidebar').classList.remove('open');
+  fermerMenu();
   renderPage();
 }
 
@@ -450,7 +597,7 @@ function renderPage(){
    ============================================================ */
 async function renderDashboard(){
   const content = document.getElementById('content');
-  content.innerHTML = `<div class="empty">Chargement...</div>`;
+  content.innerHTML = `<div class="empty empty-loading">Chargement...</div>`;
   if(!STATE.currentExercice){ content.innerHTML = `<div class="empty">Aucun exercice actif.</div>`; return; }
 
   const now = new Date();
@@ -554,34 +701,37 @@ async function renderDashboard(){
   const bulletinsRecus = bulletinsRecuIds.size;
   const bulletinsTousRecus = totalSalaries > 0 && bulletinsRecus >= totalSalaries;
 
+  const controleAccent = aControlerCount>0 ? 'kpi-accent-orange' : 'kpi-accent-green';
+  const controleIcon = aControlerCount>0 ? 'alertCircle' : 'checkCircle';
+
   content.innerHTML = `
-    <div class="grid grid-4">
-      <div class="card">
-        <div class="kpi-label">CA HT du mois</div>
+    <div class="grid grid-4 kpi-grid">
+      <div class="card kpi-card kpi-accent-blue" id="kpi-ca" role="button" tabindex="0" aria-label="Ouvrir la saisie du CA">
+        <div class="kpi-top"><span class="kpi-icon">${icon('ca')}</span><span class="kpi-label">CA HT du mois</span></div>
         <div class="kpi-value">${fmtEUR(totalCA)}</div>
         <div class="kpi-sub">${now.toLocaleDateString('fr-FR',{month:'long', year:'numeric'})}</div>
       </div>
-      <div class="card">
-        <div class="kpi-label">Nombre de tickets</div>
+      <div class="card kpi-card kpi-accent-navy" id="kpi-tickets" role="button" tabindex="0" aria-label="Ouvrir le journal des ventes">
+        <div class="kpi-top"><span class="kpi-icon">${icon('tickets')}</span><span class="kpi-label">Nombre de tickets</span></div>
         <div class="kpi-value">${totalTickets}</div>
         <div class="kpi-sub">Panier moyen : ${panierMoyen? fmtEUR(panierMoyen):'—'}</div>
       </div>
-      <div class="card">
-        <div class="kpi-label">Exercice en cours</div>
-        <div class="kpi-value" style="font-size:18px;">${escapeHTML(STATE.currentExercice.libelle)}</div>
+      <div class="card kpi-card kpi-accent-muted">
+        <div class="kpi-top"><span class="kpi-icon">${icon('calendar')}</span><span class="kpi-label">Exercice en cours</span></div>
+        <div class="kpi-value" style="font-size:17px;">${escapeHTML(STATE.currentExercice.libelle)}</div>
         <div class="kpi-sub">Du ${fmtDate(STATE.currentExercice.date_debut)} au ${fmtDate(STATE.currentExercice.date_fin)}</div>
       </div>
-      <div class="card">
-        <div class="kpi-label">Opérations à contrôler</div>
+      <div class="card kpi-card ${controleAccent}" id="kpi-controle" role="button" tabindex="0" aria-label="Ouvrir les opérations à contrôler">
+        <div class="kpi-top"><span class="kpi-icon">${icon(controleIcon)}</span><span class="kpi-label">Opérations à contrôler</span></div>
         <div class="kpi-value" style="color:${aControlerCount>0?'#b5730a':'#1c8a4b'}">${aControlerCount||0}</div>
         <div class="kpi-sub">Banque à vérifier / catégoriser</div>
       </div>
     </div>
 
-    <div class="section-title">✅ Check-list du mois — ${now.toLocaleDateString('fr-FR',{month:'long', year:'numeric'})}</div>
+    <div class="section-title">Check-list du mois — ${now.toLocaleDateString('fr-FR',{month:'long', year:'numeric'})}</div>
     <div class="card">
       <div class="checklist-item">
-        <span class="checklist-icon">${caTousComplets ? '✅' : '⚠️'}</span>
+        <span class="checklist-icon ${caTousComplets?'ok':'warn'}">${icon(caTousComplets?'checkCircle':'alertTriangle')}</span>
         <div style="flex:1;">
           <div class="checklist-label">Chiffre d'affaires saisi</div>
           <div class="checklist-detail">
@@ -590,21 +740,21 @@ async function renderDashboard(){
         </div>
       </div>
       <div class="checklist-item">
-        <span class="checklist-icon">${releveImporte ? '✅' : '⚠️'}</span>
+        <span class="checklist-icon ${releveImporte?'ok':'warn'}">${icon(releveImporte?'checkCircle':'alertTriangle')}</span>
         <div style="flex:1;">
           <div class="checklist-label">Relevé bancaire Crédit Agricole importé <span style="font-weight:400;color:var(--muted);">(${moisPrecedentLabel})</span></div>
           <div class="checklist-detail">${releveImporte ? `Importé (${(importsBanque||[]).length} fichier(s))` : `Aucun import détecté pour ${moisPrecedentLabel} — pensez à l'importer dans « Import bancaire »`}</div>
         </div>
       </div>
       <div class="checklist-item">
-        <span class="checklist-icon">${(sansJustifCount||0)===0 ? '✅' : '⚠️'}</span>
+        <span class="checklist-icon ${(sansJustifCount||0)===0?'ok':'warn'}">${icon((sansJustifCount||0)===0?'checkCircle':'alertTriangle')}</span>
         <div style="flex:1;">
           <div class="checklist-label">Justificatifs de dépenses</div>
           <div class="checklist-detail">${(sansJustifCount||0)===0 ? 'Tout est couvert' : `${sansJustifCount} dépense(s) sans justificatif ce mois — voir « Opérations à contrôler »`}</div>
         </div>
       </div>
       <div class="checklist-item">
-        <span class="checklist-icon">${totalSalaries===0 ? '⏳' : (bulletinsTousRecus ? '✅' : '⚠️')}</span>
+        <span class="checklist-icon ${totalSalaries===0?'pending':(bulletinsTousRecus?'ok':'warn')}">${icon(totalSalaries===0?'clock':(bulletinsTousRecus?'checkCircle':'alertTriangle'))}</span>
         <div style="flex:1;">
           <div class="checklist-label">Bulletins de salaire <span style="font-weight:400;color:var(--muted);">(${moisPrecedentLabel})</span></div>
           <div class="checklist-detail">${totalSalaries===0 ? 'Aucun salarié actif enregistré' : `${bulletinsRecus}/${totalSalaries} salarié(s) — voir « Salariés »`}</div>
@@ -627,6 +777,22 @@ async function renderDashboard(){
       </table>
     </div>
   `;
+
+  rendreKpiCliquable('kpi-ca', 'ca');
+  rendreKpiCliquable('kpi-tickets', 'journal');
+  rendreKpiCliquable('kpi-controle', 'controle');
+}
+
+// Rend une carte KPI cliquable au clic ET au clavier (Entrée / Espace) —
+// même comportement sur desktop et mobile.
+function rendreKpiCliquable(id, page){
+  const el = document.getElementById(id);
+  if(!el) return;
+  const activer = ()=> goToPage(page);
+  el.addEventListener('click', activer);
+  el.addEventListener('keydown', (e)=>{
+    if(e.key==='Enter' || e.key===' '){ e.preventDefault(); activer(); }
+  });
 }
 
 /* ============================================================
@@ -653,7 +819,7 @@ async function renderCaPage(){
     <div style="margin-bottom:16px;">
       <input type="month" id="ca-mois-input" value="${CA_MOIS_SELECTED}" style="padding:8px 12px;border:1px solid var(--border);border-radius:9px;font-size:13px;">
     </div>
-    <div id="ca-grid-body"><div class="empty">Chargement...</div></div>
+    <div id="ca-grid-body"><div class="empty empty-loading">Chargement...</div></div>
   `;
 
   document.querySelectorAll('#ca-magasin-tabs .tab-btn').forEach(b=>{
@@ -834,7 +1000,7 @@ function renderBanquePage(){
 
     <div class="section-title">📁 Relevés déjà importés</div>
     <div class="hint" style="margin-bottom:10px;">Attachez ici le PDF (ou Excel) original de chaque mois, pour pouvoir le retrouver ou le partager avec votre comptable plus tard.</div>
-    <div id="imports-groups"><div class="empty">Chargement...</div></div>
+    <div id="imports-groups"><div class="empty empty-loading">Chargement...</div></div>
   `;
   document.getElementById('file-input').addEventListener('change', handleBankFile);
   loadImportsLibrary();
@@ -1218,7 +1384,7 @@ function renderSalariesPage(){
         <span id="scan-bulletins-status" class="hint"></span>
       </div>
     </div>
-    <div id="salaires-recap"><div class="empty">Chargement...</div></div>
+    <div id="salaires-recap"><div class="empty empty-loading">Chargement...</div></div>
 
     <div class="section-title">📦 Import groupé (plusieurs fichiers à la fois)</div>
     <div class="card">
@@ -1264,7 +1430,7 @@ function renderSalariesPage(){
     </div>
 
     <div class="section-title">📁 Documents déjà déposés</div>
-    <div id="salaires-groups"><div class="empty">Chargement...</div></div>
+    <div id="salaires-groups"><div class="empty empty-loading">Chargement...</div></div>
   `;
 
   document.getElementById('salarie-select').addEventListener('change', (e)=>{
@@ -2071,7 +2237,7 @@ function renderVendeursPage(){
     <div class="section-title">🏆 Classement du mois</div>
     <div class="card">
       <input type="month" id="vendeur-leaderboard-mois" value="${VENDEUR_MOIS_LEADERBOARD}" style="padding:8px 12px;border:1px solid var(--border);border-radius:9px;font-size:13px;margin-bottom:14px;">
-      <div id="vendeur-leaderboard"><div class="empty">Chargement...</div></div>
+      <div id="vendeur-leaderboard"><div class="empty empty-loading">Chargement...</div></div>
     </div>
 
     <div class="section-title">📈 Historique d'un vendeur</div>
@@ -2085,7 +2251,7 @@ function renderVendeursPage(){
             </optgroup>`).join('')}
         </select>
       </div>
-      <div id="vendeur-historique"><div class="empty">Chargement...</div></div>
+      <div id="vendeur-historique"><div class="empty empty-loading">Chargement...</div></div>
     </div>
   `;
 
@@ -2470,7 +2636,7 @@ async function renderControlePage(){
       <input type="checkbox" id="filtre-sans-justificatif">
       🧾 N'afficher que les dépenses sans justificatif
     </label>
-    <div id="controle-groups"><div class="empty">Chargement...</div></div>
+    <div id="controle-groups"><div class="empty empty-loading">Chargement...</div></div>
   `;
   if(CONTROLE_ANNEES.size===0) CONTROLE_ANNEES.add(new Date().getFullYear());
   document.querySelectorAll('#controle-tabs .tab-btn').forEach(b=>{
@@ -2888,7 +3054,7 @@ function renderParametresPage(){
       </button>
       <div class="param-content" id="section-apropos" style="display:none;">
         <div style="padding:0 20px 20px 20px;">
-          <div id="apropos-content"><div class="empty">Chargement...</div></div>
+          <div id="apropos-content"><div class="empty empty-loading">Chargement...</div></div>
           <button class="btn secondary small" id="verifier-maj-btn">🔄 Vérifier les mises à jour</button>
         </div>
       </div>
@@ -3411,7 +3577,7 @@ function renderJournalVentesPage(){
       <input type="month" id="journal-mois-input" value="${JOURNAL_MOIS}" style="padding:8px 12px;border:1px solid var(--border);border-radius:9px;font-size:13px;">
     </div>
     <div class="hint" style="margin-bottom:16px;">Données issues des journaux de ventes envoyés en caisse (marge réelle, TVA collectée, modes d'encaissement, avoirs). Comparées automatiquement à votre saisie quotidienne du CA pour repérer un écart éventuel.</div>
-    <div id="journal-body"><div class="empty">Chargement...</div></div>
+    <div id="journal-body"><div class="empty empty-loading">Chargement...</div></div>
   `;
   document.getElementById('journal-mois-input').addEventListener('change', (e)=>{
     if(e.target.value){ JOURNAL_MOIS = e.target.value; loadJournalVentes(); }
@@ -3595,7 +3761,7 @@ function afficherBanniereMiseAJour(info){
 function renderAproposContent(){
   const el = document.getElementById('apropos-content');
   if(!el) return;
-  if(!VERSION_INFO){ el.innerHTML = `<div class="empty">Chargement...</div>`; return; }
+  if(!VERSION_INFO){ el.innerHTML = `<div class="empty empty-loading">Chargement...</div>`; return; }
   const dateAffichee = VERSION_INFO.date ? fmtDate(VERSION_INFO.date) : '—';
   const envLabel = VERSION_INFO.environment === 'production' ? 'Production' : (VERSION_INFO.environment || '—');
   const nouveautes = (VERSION_INFO.highlights||[]).map(h=>`<li>${escapeHTML(h)}</li>`).join('');
@@ -3612,6 +3778,29 @@ initialiserVersion();
 document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState === 'visible') verifierMiseAJour();
 });
+
+/* ============================================================
+   ANIMATION DE TRANSITION DE PAGE (Lot F)
+   ----------------------------------------------------------------
+   Un seul point d'intégration : un observateur sur les enfants DIRECTS
+   de #content. Il se déclenche uniquement quand une page entière est
+   remplacée (content.innerHTML = ...), jamais sur un rafraîchissement
+   partiel (ex. un <tbody> mis à jour après une sauvegarde dans
+   Paramètres), puisque ces mutations-là ne touchent pas les enfants
+   directs de #content. Aucune modification nécessaire dans chacune des
+   fonctions render*Page().
+   ============================================================ */
+(function(){
+  const contenuEl = document.getElementById('content');
+  if(!contenuEl || !contenuEl.animate) return;
+  const observateurTransition = new MutationObserver(()=>{
+    contenuEl.animate(
+      [{ opacity:0, transform:'translateY(6px)' }, { opacity:1, transform:'translateY(0)' }],
+      { duration:200, easing:'cubic-bezier(.4,0,.2,1)' }
+    );
+  });
+  observateurTransition.observe(contenuEl, { childList:true });
+})();
 
 /* ============================================================
    PAGE : ANALYSE PAR MAGASIN
@@ -3671,7 +3860,7 @@ function renderAnalysePage(){
       🔀 Comparer 2 périodes au lieu de les cumuler (cochez 2 exercices, ou 1 année civile + 2 mois)
     </label>
 
-    <div id="analyse-body"><div class="empty">Chargement...</div></div>
+    <div id="analyse-body"><div class="empty empty-loading">Chargement...</div></div>
   `;
 
   document.querySelectorAll('#magasin-tabs .tab-btn').forEach(b=>{
