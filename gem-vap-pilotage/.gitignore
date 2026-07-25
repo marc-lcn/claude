@@ -1,0 +1,23 @@
+# Systèmes d'exploitation
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Éditeurs / IDE
+.vscode/
+.idea/
+*.swp
+
+# Netlify (dossiers locaux générés par la CLI, si utilisée un jour)
+.netlify/
+
+# Fichiers de secrets éventuels (aucun n'existe aujourd'hui dans ce projet,
+# la clé Supabase utilisée côté navigateur est une clé publique "anon" ;
+# cette règle est une précaution pour l'avenir, pas une correction actuelle)
+.env
+.env.*
+
+# Fichiers temporaires / sauvegardes locales
+*.bak
+*.tmp
+*~

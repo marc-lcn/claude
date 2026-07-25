@@ -1,7 +1,13 @@
-const CACHE_NAME = 'gemvap-pilotage-v1';
+// Lot E : ce nom de cache n'est PAS lié au numéro de version de l'application
+// (voir version.json / VERSION) — il ne change que lorsque la liste des
+// fichiers pré-cachés change (comme ici, avec l'ajout de version.json).
+// La fraîcheur du contenu est déjà garantie par la stratégie "réseau
+// d'abord" ci-dessous ; ce cache n'est qu'un secours hors-ligne.
+const CACHE_NAME = 'gemvap-pilotage-v2';
 const FILES_TO_CACHE = [
   './index.html',
   './manifest.json',
+  './version.json',
   './icon-192.png',
   './icon-512.png'
 ];

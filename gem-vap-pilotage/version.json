@@ -1,0 +1,11 @@
+{
+  "version": "1.0.0",
+  "date": "2026-07-25",
+  "environment": "production",
+  "highlights": [
+    "Sécurisation des accès aux profils utilisateurs",
+    "Protection contre les failles XSS",
+    "Import bancaire fiabilisé, sans doublons",
+    "Journal d'audit des actions importantes"
+  ]
+}

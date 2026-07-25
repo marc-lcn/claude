@@ -1,0 +1,50 @@
+# Configuration Netlify — GEM.VAP Pilotage
+# Site statique (HTML/CSS/JS), publié directement depuis la racine du dépôt.
+# Aucune étape de build : les fichiers sont servis tels quels.
+
+[build]
+  publish = "."
+
+# ----------------------------------------------------------------------
+# En-têtes de cache
+# ----------------------------------------------------------------------
+# Objectif : que le navigateur revérifie systématiquement auprès du serveur
+# si index.html, sw.js, version.json ou manifest.json ont changé, plutôt que
+# de servir une copie locale potentiellement périmée qui empêcherait la
+# détection d'une nouvelle version. "no-cache" ne veut PAS dire "jamais mis
+# en cache" : le navigateur peut toujours garder une copie, mais doit la
+# revalider auprès du serveur avant de l'utiliser (requête légère, pas un
+# retéléchargement complet à chaque fois).
+#
+# Les icônes, à l'inverse, ne changent jamais sans être renommées : un cache
+# long et "immutable" est donc sans risque et améliore les performances.
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
+
+[[headers]]
+  for = "/version.json"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
+
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
+
+[[headers]]
+  for = "/icon-192.png"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/icon-512.png"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

@@ -120,6 +120,11 @@ td{padding:9px 10px;border-bottom:1px solid var(--border);white-space:nowrap;}
 .hint{font-size:12.5px;color:var(--muted);margin-top:6px;}
 .toast{position:fixed;bottom:22px;right:22px;background:var(--navy);color:#fff;padding:12px 18px;border-radius:10px;font-size:13.5px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:100;}
 .empty{color:var(--muted);font-size:13.5px;padding:20px;text-align:center;}
+.update-banner{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;max-width:420px;width:calc(100% - 32px);background:var(--navy);color:#fff;padding:16px 18px;border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.3);z-index:200;}
+.update-banner h4{margin:0 0 8px 0;font-size:14.5px;font-weight:800;}
+.update-banner ul{margin:8px 0 14px 0;padding-left:18px;font-size:12.5px;color:#cfd3ea;line-height:1.5;}
+.update-banner .update-actions{display:flex;gap:10px;justify-content:flex-end;}
+.sidebar-foot .app-version{font-size:10.5px;color:#7b81a8;margin-bottom:8px;}
 tr.ligne-fermee{background:#eef0f6;}
 tr.ligne-fermee td{color:var(--muted);}
 tr.ligne-fermee input[type="number"]{background:#e5e7f0;}
@@ -193,6 +198,7 @@ tr.ligne-fermee input[type="number"]{background:#e5e7f0;}
       <button class="nav-item" data-page="parametres">⚙️ Paramètres</button>
       <div class="sidebar-foot">
         <div class="who" id="who-label"></div>
+        <div class="app-version" id="app-version-label"></div>
         <button class="btn-logout" id="logout-btn">Se déconnecter</button>
       </div>
     </aside>
@@ -2874,6 +2880,19 @@ function renderParametresPage(){
         </div>
       </div>
     </div>
+
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px;">
+      <button class="param-toggle" data-target="section-apropos">
+        <span>ℹ️ À propos</span>
+        <span class="chevron">▼</span>
+      </button>
+      <div class="param-content" id="section-apropos" style="display:none;">
+        <div style="padding:0 20px 20px 20px;">
+          <div id="apropos-content"><div class="empty">Chargement...</div></div>
+          <button class="btn secondary small" id="verifier-maj-btn">🔄 Vérifier les mises à jour</button>
+        </div>
+      </div>
+    </div>
   `;
 
   document.querySelectorAll('.param-toggle').forEach(btn=>{
@@ -2948,6 +2967,8 @@ function renderParametresPage(){
   loadCollaborateursAdmin();
   loadMagasinsAdmin();
   loadReglesAdmin();
+  renderAproposContent();
+  document.getElementById('verifier-maj-btn').addEventListener('click', ()=> verifierMiseAJour({ manuel:true }));
 }
 
 let REGLES_CACHE = { regles: [], categories: [] };
@@ -3476,6 +3497,121 @@ if('serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js').catch(err=>console.error('Service worker non enregistré :', err));
   });
 }
+
+/* ============================================================
+   VERSION DE L'APPLICATION & MISE À JOUR PWA
+   ----------------------------------------------------------------
+   version.json est l'UNIQUE source lue par l'application (affichage
+   "À propos" et détection de nouvelle version). Le fichier VERSION à
+   la racine du dépôt n'est qu'un miroir texte pour les humains — il
+   n'est jamais lu ici. Toujours récupéré avec cache:'no-store' pour
+   ignorer le cache HTTP du navigateur (voir netlify.toml pour les
+   en-têtes côté serveur qui renforcent ce comportement).
+
+   Pas de vérification périodique automatique (volontaire) : la
+   détection se déclenche uniquement au chargement, au retour au
+   premier plan (visibilitychange), ou via le bouton manuel de la
+   section "À propos".
+   ============================================================ */
+let VERSION_INFO = null;       // dernières infos connues (affichage "À propos")
+let VERSION_CHARGEE = null;    // version avec laquelle l'appli a démarré (référence de comparaison)
+let VERSION_IGNOREE = null;    // dernière version proposée puis "Plus tard" cette session
+
+async function chargerVersionJson(){
+  try{
+    const res = await fetch('version.json', { cache: 'no-store' });
+    if(!res.ok) return null;
+    return await res.json();
+  } catch(err){
+    console.error('Impossible de récupérer version.json :', err);
+    return null;
+  }
+}
+
+function majAffichageVersion(info){
+  VERSION_INFO = info;
+  const label = document.getElementById('app-version-label');
+  if(label) label.textContent = `v${info.version}`;
+  renderAproposContent();
+}
+
+async function initialiserVersion(){
+  const info = await chargerVersionJson();
+  if(!info) return;
+  VERSION_CHARGEE = info.version;
+  majAffichageVersion(info);
+}
+
+async function verifierMiseAJour({ manuel=false } = {}){
+  const info = await chargerVersionJson();
+  if(!info){
+    if(manuel) toast('Vérification impossible — pas de connexion ?');
+    return;
+  }
+  majAffichageVersion(info); // garde "À propos" à jour même sans nouvelle version
+
+  if(!VERSION_CHARGEE){ VERSION_CHARGEE = info.version; return; } // première mesure de la session
+
+  if(info.version === VERSION_CHARGEE){
+    if(manuel) toast('Vous utilisez déjà la dernière version ✔');
+    return;
+  }
+  if(info.version === VERSION_IGNOREE && !manuel) return; // déjà proposée et ignorée cette session
+
+  afficherBanniereMiseAJour(info);
+}
+
+function afficherBanniereMiseAJour(info){
+  const existante = document.getElementById('update-banner');
+  if(existante) existante.remove(); // jamais deux bannières à la fois
+
+  const banniere = document.createElement('div');
+  banniere.className = 'update-banner';
+  banniere.id = 'update-banner';
+  const nouveautes = (info.highlights||[]).slice(0,5).map(h=>`<li>${escapeHTML(h)}</li>`).join('');
+  banniere.innerHTML = `
+    <h4>Version ${escapeHTML(info.version)} disponible</h4>
+    ${nouveautes ? `<div style="font-size:12.5px;font-weight:700;margin-bottom:4px;">Nouveautés :</div><ul>${nouveautes}</ul>` : ''}
+    <div class="update-actions">
+      <button class="btn secondary small" id="update-plus-tard-btn">Plus tard</button>
+      <button class="btn small" id="update-maintenant-btn">Mettre à jour</button>
+    </div>
+  `;
+  document.body.appendChild(banniere);
+
+  document.getElementById('update-plus-tard-btn').addEventListener('click', ()=>{
+    VERSION_IGNOREE = info.version;
+    banniere.remove();
+  });
+  document.getElementById('update-maintenant-btn').addEventListener('click', ()=>{
+    const actif = document.activeElement;
+    const saisieEnCours = actif && ['INPUT','TEXTAREA','SELECT'].includes(actif.tagName);
+    if(saisieEnCours && !confirm('Une saisie est peut-être en cours. Recharger quand même ?')) return;
+    banniere.innerHTML = `<div style="font-size:13.5px;font-weight:700;">Installation de la mise à jour…</div>`;
+    setTimeout(()=> window.location.reload(), 600);
+  });
+}
+
+function renderAproposContent(){
+  const el = document.getElementById('apropos-content');
+  if(!el) return;
+  if(!VERSION_INFO){ el.innerHTML = `<div class="empty">Chargement...</div>`; return; }
+  const dateAffichee = VERSION_INFO.date ? fmtDate(VERSION_INFO.date) : '—';
+  const envLabel = VERSION_INFO.environment === 'production' ? 'Production' : (VERSION_INFO.environment || '—');
+  const nouveautes = (VERSION_INFO.highlights||[]).map(h=>`<li>${escapeHTML(h)}</li>`).join('');
+  el.innerHTML = `
+    <div style="font-size:13.5px;line-height:1.7;margin-bottom:12px;">
+      <div><b>GEM.VAP Pilotage</b> — version <b>${escapeHTML(VERSION_INFO.version)}</b></div>
+      <div class="hint" style="margin:2px 0 10px 0;">Publiée le ${dateAffichee} — Environnement : ${escapeHTML(envLabel)}</div>
+      ${nouveautes ? `<div style="font-weight:700;margin-bottom:4px;">Principales nouveautés :</div><ul style="margin:0 0 0 18px;">${nouveautes}</ul>` : ''}
+    </div>
+  `;
+}
+
+initialiserVersion();
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible') verifierMiseAJour();
+});
 
 /* ============================================================
    PAGE : ANALYSE PAR MAGASIN
