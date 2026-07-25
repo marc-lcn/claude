@@ -239,6 +239,13 @@ function fmtDate(d){
   const dt = new Date(d);
   return dt.toLocaleDateString('fr-FR');
 }
+// Formate un objet Date en 'YYYY-MM-DD' à partir de ses composantes LOCALES.
+// Ne jamais utiliser .toISOString().slice(0,10) pour ça : ça convertit en UTC
+// et décale la date d'un jour en arrière l'été en France (UTC+2), ce qui a déjà
+// fait disparaître silencieusement le dernier jour du mois de plusieurs calculs.
+function toLocalISODate(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 function toast(msg){
   const t = document.createElement('div');
   t.className='toast';
@@ -318,7 +325,7 @@ async function loadReferenceData(){
   STATE.exercices = exercices || [];
   STATE.collaborateurs = collaborateurs || [];
 
-  const aujourdHui = new Date().toISOString().slice(0,10);
+  const aujourdHui = toLocalISODate(new Date());
   STATE.currentExercice =
     STATE.exercices.find(e => aujourdHui >= e.date_debut && aujourdHui <= e.date_fin)
     || STATE.exercices.find(e=>e.actif)
@@ -382,8 +389,8 @@ async function renderDashboard(){
 
   const now = new Date();
   const moisStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10);
+  const monthStart = toLocalISODate(new Date(now.getFullYear(), now.getMonth(), 1));
+  const monthEnd = toLocalISODate(new Date(now.getFullYear(), now.getMonth()+1, 0));
 
   // Le relevé bancaire et les bulletins de salaire concernent le MOIS PRÉCÉDENT
   // (on ne les reçoit qu'une fois le mois clôturé)
@@ -438,7 +445,7 @@ async function renderDashboard(){
   // (dimanches et jours fériés exclus ; aujourd'hui n'est exigé qu'à partir de 21h)
   let limiteDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   if(now.getHours() < 21) limiteDate.setDate(limiteDate.getDate()-1);
-  const limiteISO = limiteDate.toISOString().slice(0,10);
+  const limiteISO = toLocalISODate(limiteDate);
   const finPourComptageRequis = limiteISO < monthStart ? null : (limiteISO > monthEnd ? monthEnd : limiteISO);
 
   const feriesAnnee = joursFeriesFrance(now.getFullYear());
@@ -2708,7 +2715,7 @@ async function loadJournalVentes(){
   const body = document.getElementById('journal-body');
   const [y,m] = JOURNAL_MOIS.split('-').map(Number);
   const dateDebut = `${JOURNAL_MOIS}-01`;
-  const dateFin = new Date(y, m, 0).toISOString().slice(0,10);
+  const dateFin = toLocalISODate(new Date(y, m, 0));
 
   const [{ data: journaux }, { data: caRows }] = await Promise.all([
     sb.from('journaux_ventes_mensuels').select('*, magasins(code,nom)').eq('mois', JOURNAL_MOIS),
@@ -2995,7 +3002,7 @@ async function loadAnalyseData(){
       const year = items[0];
       const build = (mois) => {
         const start = `${year}-${String(mois).padStart(2,'0')}-01`;
-        const end = new Date(year, mois, 0).toISOString().slice(0,10);
+        const end = toLocalISODate(new Date(year, mois, 0));
         const label = new Date(year, mois-1, 1).toLocaleDateString('fr-FR',{month:'long', year:'numeric'});
         return { label, start, end, predicate:(d)=> d>=start && d<=end };
       };
