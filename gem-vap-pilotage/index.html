@@ -256,6 +256,36 @@ function escapeHTML(str){
     .replace(/"/g,'&quot;')
     .replace(/'/g,'&#39;');
 }
+// Enregistre un événement métier dans le journal d'audit (table journal_audit,
+// migration Lot D — append-only : aucune policy UPDATE/DELETE côté base, voir
+// la migration pour le détail). N'enregistrer ici QUE des actions ayant un
+// impact métier durable (créations/modifications/suppressions structurantes,
+// imports, corrections tardives) — jamais un simple clic ou une consultation.
+// Ne bloque jamais l'action métier qui l'appelle : si l'écriture du journal
+// échoue, l'erreur est seulement tracée en console ; l'action déjà effectuée
+// n'est pas annulée pour autant.
+//   typeAction      : une des valeurs autorisées par la contrainte SQL de
+//                      journal_audit.type_action
+//   tableConcernee  : nom de la table métier concernée (optionnel)
+//   elementId       : identifiant de la ligne concernée (optionnel — une
+//                      action groupée peut ne pas avoir d'élément unique)
+//   resume          : texte lisible par un humain, compréhensible dans
+//                      plusieurs années sans contexte technique
+//   details         : objet structuré optionnel (compteurs, anciennes/
+//                      nouvelles valeurs...), en complément du résumé
+//   gravite         : 'info' (défaut), 'avertissement' ou 'erreur'
+async function enregistrerAudit(typeAction, { tableConcernee=null, elementId=null, resume, details=null, gravite='info' }){
+  const { error } = await sb.from('journal_audit').insert({
+    type_action: typeAction,
+    gravite,
+    table_concernee: tableConcernee,
+    element_id: elementId,
+    resume,
+    details
+  });
+  if(error) console.error('Erreur journal d\'audit :', error);
+}
+
 // Formate un objet Date en 'YYYY-MM-DD' à partir de ses composantes LOCALES.
 // Ne jamais utiliser .toISOString().slice(0,10) pour ça : ça convertit en UTC
 // et décale la date d'un jour en arrière l'été en France (UTC+2), ce qui a déjà
@@ -672,7 +702,7 @@ async function loadCaGrid(){
     const ferme = existing ? !!existing.ferme : (isDimanche || isFerie);
     const feriePuce = isFerie ? ' <span style="color:var(--pink);font-size:11px;">(férié)</span>' : '';
     rowsHtml += `
-      <tr data-date="${dateStr}" class="${ferme?'ligne-fermee':''}">
+      <tr data-date="${dateStr}" data-ca-existant="${existing?.ca_ht ?? ''}" class="${ferme?'ligne-fermee':''}">
         <td style="text-transform:capitalize;font-weight:600;">${jourLabel}${feriePuce}</td>
         <td><input type="number" step="0.01" inputmode="decimal" class="row-input ca-input" value="${ca}" placeholder="0,00" style="width:110px;" ${ferme?'disabled':''}></td>
         <td><input type="number" inputmode="numeric" class="row-input tickets-input" value="${tickets}" placeholder="0" style="width:80px;" ${ferme?'disabled':''}></td>
@@ -728,15 +758,31 @@ async function loadCaGrid(){
       const ferme = fermeInput.checked;
       const exercice = findExerciceForDate(dateStr);
       if(!exercice){ toast(`Aucun exercice comptable ne couvre le ${fmtDate(dateStr)}.`); return; }
-      const { error } = await sb.from('ca_journalier').upsert({
+      const { data: savedRow, error } = await sb.from('ca_journalier').upsert({
         exercice_id: exercice.id,
         date_operation: dateStr,
         magasin_id: magasin.id,
         ca_ht: ca,
         nb_tickets: tickets,
         ferme: ferme
-      }, { onConflict: 'date_operation,magasin_id' });
+      }, { onConflict: 'date_operation,magasin_id' }).select().single();
       if(error){ toast('Erreur : ' + error.message); return; }
+
+      // Une correction/saisie plus de 48h après le jour concerné sort du
+      // rythme normal de saisie quotidienne — on la journalise, sans logger
+      // les saisies courantes du jour ou du lendemain.
+      const limiteCorrection = new Date(new Date(dateStr+'T00:00:00').getTime() + 48*3600*1000);
+      if(new Date() > limiteCorrection){
+        const ancienCa = tr.dataset.caExistant !== '' ? Number(tr.dataset.caExistant) : null;
+        enregistrerAudit('correction_ca_tardive', {
+          tableConcernee: 'ca_journalier',
+          elementId: savedRow?.id || null,
+          resume: `CA ${ancienCa!=null?'corrigé':'saisi tardivement'} pour ${magasin.nom} le ${fmtDate(dateStr)} (plus de 48h après la date concernée)${(ancienCa!=null && ancienCa!==ca) ? ` : ${fmtEUR(ancienCa)} → ${fmtEUR(ca)}` : ''}`,
+          details: { magasin: magasin.code, date_operation: dateStr, ancien_ca: ancienCa, nouveau_ca: ca },
+          gravite: 'avertissement'
+        });
+        tr.dataset.caExistant = ca ?? '';
+      }
     }
 
     caInput.addEventListener('input', recalcTotals);
@@ -1055,6 +1101,14 @@ async function handleBankFile(e){
 
   statusEl.innerHTML = `<div class="badge green" style="font-size:13px;">${totalAnalysees} opération(s) analysée(s) — ${nouvelles} nouvelle(s) importée(s) — ${doublons} doublon(s) ignoré(s)${anomalies>0?` — ${anomalies} anomalie(s)`:''}</div>
     <div class="hint">${reconnues} reconnue(s) automatiquement. Rendez-vous dans « Opérations à contrôler » pour vérifier le reste.</div>`;
+
+  enregistrerAudit('import_bancaire', {
+    tableConcernee: 'imports',
+    elementId: importRow.id,
+    resume: `Import bancaire ${moisMajoritaire||''} : ${nouvelles} nouvelle(s) opération(s), ${doublons} doublon(s) ignoré(s)${anomalies>0?`, ${anomalies} anomalie(s)`:''}`,
+    details: { mois: moisMajoritaire, nom_fichier: file.name, total_analysees: totalAnalysees, nouvelles, doublons, anomalies },
+    gravite: anomalies>0 ? 'avertissement' : 'info'
+  });
 }
 
 function parseMontant(v){
@@ -1604,6 +1658,14 @@ async function uploadBulletin(collaborateurId, mois, typeDocument, file){
   if(/\.pdf$/i.test(file.name)){
     await appliquerExtractionSurSalaire(salaireRow, collaborateurId, file);
   }
+
+  enregistrerAudit(existant ? 'remplacement_document' : 'import_bulletin_salaire', {
+    tableConcernee: 'salaires',
+    elementId: salaireRow.id,
+    resume: `${existant?'Document remplacé':'Bulletin importé'} : ${TYPE_DOCUMENT_LABELS[typeDocument]||typeDocument} de ${collaborateur?.nom||'salarié inconnu'} (${mois})`,
+    details: { collaborateur_id: collaborateurId, mois, type_document: typeDocument, nom_fichier: file.name }
+  });
+
   return { ok:true };
 }
 
@@ -1700,6 +1762,10 @@ function renderBulkPreview(){
       const { data, error } = await sb.from('collaborateurs').insert({ nom, actif:true }).select().single();
       if(error){ alert('Erreur : ' + error.message); renderBulkPreview(); return; }
       STATE.collaborateurs.push(data);
+      enregistrerAudit('creation_salarie', {
+        tableConcernee: 'collaborateurs', elementId: data.id,
+        resume: `Salarié créé : ${nom} (depuis l'import de bulletins)`
+      });
       BULK_ROWS.forEach(r=>{ if(!r.collaborateurId){ const m = deviverCollaborateur(r.personSegment); if(m) r.collaborateurId = m.id; } });
       renderBulkPreview();
     });
@@ -2135,6 +2201,14 @@ async function importerSyntheseVentes(file, mois, rowsAvecMatching){
     }, { onConflict: 'magasin_id,mois,nom_vendeur_brut' });
     if(!error) ok++;
   }
+
+  enregistrerAudit('import_ca_vendeur', {
+    tableConcernee: 'imports',
+    elementId: importId,
+    resume: `Import CA par vendeur ${mois} : ${ok} ligne(s) importée(s)${ignorees>0?`, ${ignorees} ignorée(s) (sans magasin)`:''}`,
+    details: { mois, nom_fichier: file.name, nb_importees: ok, nb_ignorees: ignorees }
+  });
+
   return { ok:true, nbImportees: ok, nbIgnorees: ignorees };
 }
 
@@ -2459,7 +2533,7 @@ function buildRowHtml(op){
       <button class="btn secondary small marquer-non-requis-btn" style="margin-left:6px;">Sans justificatif</button>`;
   }
   return `
-  <tr data-id="${op.id}" data-path="${op.piece_jointe_path||''}">
+  <tr data-id="${op.id}" data-path="${op.piece_jointe_path||''}" data-etat="${op.etat}" data-categorie-finale="${op.categorie_finale_id||''}" data-affectation="${op.affectation||''}">
     <td><input type="checkbox" class="row-check" data-id="${op.id}"></td>
     <td>${fmtDate(op.date_operation)}</td>
     <td style="max-width:260px;white-space:normal;">${escapeHTML(op.libelle)}</td>
@@ -2805,12 +2879,13 @@ function renderParametresPage(){
     const input = document.getElementById('new-cat-input');
     const libelle = input.value.trim();
     if(!libelle) return;
-    const { error } = await sb.from('categories').insert({ libelle });
+    const { data, error } = await sb.from('categories').insert({ libelle }).select().single();
     if(error){ toast('Erreur : ' + error.message); return; }
     toast('Catégorie ajoutée ✔');
     input.value = '';
     await loadReferenceData();
     loadCategoriesAdmin();
+    enregistrerAudit('creation_categorie', { tableConcernee: 'categories', elementId: data.id, resume: `Catégorie créée : ${libelle}` });
   });
 
   document.getElementById('add-collab-btn').addEventListener('click', async ()=>{
@@ -2818,26 +2893,28 @@ function renderParametresPage(){
     if(!nom){ toast('Indiquez un nom.'); return; }
     const affectation = document.getElementById('new-collab-affectation').value;
     const poste = document.getElementById('new-collab-poste').value.trim() || null;
-    const { error } = await sb.from('collaborateurs').insert({ nom, affectation, poste });
+    const { data, error } = await sb.from('collaborateurs').insert({ nom, affectation, poste }).select().single();
     if(error){ toast('Erreur : ' + error.message); return; }
     toast('Salarié ajouté ✔');
     document.getElementById('new-collab-nom').value = '';
     document.getElementById('new-collab-poste').value = '';
     await loadReferenceData();
     loadCollaborateursAdmin();
+    enregistrerAudit('creation_salarie', { tableConcernee: 'collaborateurs', elementId: data.id, resume: `Salarié créé : ${nom} (${affectation}${poste?', '+poste:''})` });
   });
 
   document.getElementById('add-magasin-btn').addEventListener('click', async ()=>{
     const code = document.getElementById('new-magasin-code').value.trim().toUpperCase().replace(/\s+/g,'_');
     const nom = document.getElementById('new-magasin-nom').value.trim();
     if(!code || !nom){ toast('Indiquez un code et un nom.'); return; }
-    const { error } = await sb.from('magasins').insert({ code, nom, ordre_affichage: 99 });
+    const { data, error } = await sb.from('magasins').insert({ code, nom, ordre_affichage: 99 }).select().single();
     if(error){ toast('Erreur : ' + error.message); return; }
     toast('Magasin ajouté ✔');
     document.getElementById('new-magasin-code').value = '';
     document.getElementById('new-magasin-nom').value = '';
     await loadReferenceData();
     loadMagasinsAdmin();
+    enregistrerAudit('creation_magasin', { tableConcernee: 'magasins', elementId: data.id, resume: `Magasin créé : ${nom} (${code})` });
   });
 
   document.getElementById('add-regle-btn').addEventListener('click', async ()=>{
@@ -2845,14 +2922,15 @@ function renderParametresPage(){
     if(!motCle){ toast('Indiquez un mot-clé.'); return; }
     const categorie_id = document.getElementById('new-regle-categorie').value;
     const affectation = document.getElementById('new-regle-affectation').value;
-    const { error } = await sb.from('regles_categorisation').insert({
+    const { data, error } = await sb.from('regles_categorisation').insert({
       mot_cle: motCle, categorie_id, affectation, priorite: 1, confiance: 100, validation_auto: false
-    });
+    }).select().single();
     if(error){ toast('Erreur : ' + error.message); return; }
     document.getElementById('new-regle-motcle').value = '';
     loadReglesAdmin();
     const nbMaj = await appliquerReglePassee(motCle, categorie_id, affectation);
     toast(nbMaj>0 ? `Mot-clé ajouté — ${nbMaj} opération(s) déjà présente(s) mise(s) à jour dans tous les exercices ✔` : 'Mot-clé ajouté ✔');
+    enregistrerAudit('creation_regle', { tableConcernee: 'regles_categorisation', elementId: data.id, resume: `Règle créée : mot-clé "${motCle}" (${affectation})` });
   });
 
   loadCategoriesAdmin();
@@ -2924,34 +3002,41 @@ function renderReglesTable(recherche){
     tr.querySelector('.rename-regle-input').addEventListener('change', async (e)=>{
       const v = e.target.value.trim();
       if(!v) return;
+      const ancien = e.target.defaultValue;
       const { error } = await sb.from('regles_categorisation').update({ mot_cle: v }).eq('id', id);
       if(error){ toast('Erreur : ' + error.message); return; }
       toast('Mot-clé renommé ✔');
+      enregistrerAudit('modification_regle', { tableConcernee: 'regles_categorisation', elementId: id, resume: `Règle renommée : "${ancien}" → "${v}"` });
     });
     tr.querySelector('.regle-categorie-select').addEventListener('change', async (e)=>{
       const { error } = await sb.from('regles_categorisation').update({ categorie_id: e.target.value }).eq('id', id);
       if(error){ toast('Erreur : ' + error.message); return; }
       toast('Catégorie mise à jour ✔');
+      enregistrerAudit('modification_regle', { tableConcernee: 'regles_categorisation', elementId: id, resume: `Catégorie de la règle "${tr.querySelector('.rename-regle-input').value}" modifiée` });
     });
     tr.querySelector('.regle-affectation-select').addEventListener('change', async (e)=>{
       const { error } = await sb.from('regles_categorisation').update({ affectation: e.target.value }).eq('id', id);
       if(error){ toast('Erreur : ' + error.message); return; }
       toast('Affectation mise à jour ✔');
+      enregistrerAudit('modification_regle', { tableConcernee: 'regles_categorisation', elementId: id, resume: `Affectation de la règle "${tr.querySelector('.rename-regle-input').value}" modifiée : ${e.target.value}` });
     });
     tr.querySelector('.toggle-regle-btn').addEventListener('click', async ()=>{
       const { data: current } = await sb.from('regles_categorisation').select('actif').eq('id', id).single();
       const { error } = await sb.from('regles_categorisation').update({ actif: !current.actif }).eq('id', id);
       if(error){ toast('Erreur : ' + error.message); return; }
       loadReglesAdmin();
+      enregistrerAudit('modification_regle', { tableConcernee: 'regles_categorisation', elementId: id, resume: `Règle "${tr.querySelector('.rename-regle-input').value}" ${!current.actif?'activée':'désactivée'}` });
     });
     const supprimerBtn = tr.querySelector('.supprimer-regle-btn');
     if(supprimerBtn){
       supprimerBtn.addEventListener('click', async ()=>{
         if(!confirm('Supprimer définitivement ce mot-clé ?')) return;
+        const motCleSupprime = tr.querySelector('.rename-regle-input').value;
         const { error } = await sb.from('regles_categorisation').delete().eq('id', id);
         if(error){ toast('Suppression impossible : ' + error.message); return; }
         toast('Mot-clé supprimé ✔');
         loadReglesAdmin();
+        enregistrerAudit('suppression_regle', { tableConcernee: 'regles_categorisation', elementId: id, resume: `Règle supprimée : "${motCleSupprime}"` });
       });
     }
   });
@@ -3043,6 +3128,13 @@ async function genererReglesManquantes(){
     if(error){ echecs++; console.error('Erreur création règle :', r.mot_cle, error); } else { creees++; }
   }));
   toast(echecs>0 ? `${creees} règle(s) créée(s), ${echecs} échec(s) (voir la console) ⚠️` : `${creees} règle(s) créée(s) ✔`);
+  if(creees>0){
+    enregistrerAudit('creation_regle', {
+      tableConcernee: 'regles_categorisation',
+      resume: `${creees} règle(s) générée(s) automatiquement depuis les opérations déjà validées`,
+      details: { mots_cles: liste.slice(0,20).map(r=>r.mot_cle) }
+    });
+  }
   loadReglesAdmin();
 }
 
@@ -3066,10 +3158,12 @@ async function loadCategoriesAdmin(){
     input.addEventListener('change', async ()=>{
       const libelle = input.value.trim();
       if(!libelle) return;
+      const ancien = input.defaultValue;
       const { error } = await sb.from('categories').update({ libelle }).eq('id', id);
       if(error){ toast('Erreur : ' + error.message); return; }
       toast('Catégorie renommée ✔');
       loadReferenceData();
+      enregistrerAudit('modification_categorie', { tableConcernee: 'categories', elementId: id, resume: `Catégorie renommée : "${ancien}" → "${libelle}"` });
     });
     tr.querySelector('.toggle-cat-btn').addEventListener('click', async ()=>{
       const { data: current } = await sb.from('categories').select('actif').eq('id', id).single();
@@ -3077,11 +3171,13 @@ async function loadCategoriesAdmin(){
       if(error){ toast('Erreur : ' + error.message); return; }
       await loadReferenceData();
       loadCategoriesAdmin();
+      enregistrerAudit('modification_categorie', { tableConcernee: 'categories', elementId: id, resume: `Catégorie "${input.value}" ${!current.actif?'activée':'désactivée'}` });
     });
     const supprimerBtn = tr.querySelector('.supprimer-cat-btn');
     if(supprimerBtn){
       supprimerBtn.addEventListener('click', async ()=>{
         if(!confirm('Supprimer définitivement cette catégorie ?')) return;
+        const libelleSupprime = input.value;
         const { error } = await sb.from('categories').delete().eq('id', id);
         if(error){
           await afficherLignesLieesCategorie(id, tr, data);
@@ -3090,6 +3186,7 @@ async function loadCategoriesAdmin(){
         toast('Catégorie supprimée ✔');
         await loadReferenceData();
         loadCategoriesAdmin();
+        enregistrerAudit('suppression_categorie', { tableConcernee: 'categories', elementId: id, resume: `Catégorie supprimée : "${libelleSupprime}"` });
       });
     }
   });
@@ -3167,6 +3264,14 @@ async function afficherLignesLieesCategorie(categorieId, tr, toutesCategories){
     toast('Lignes réaffectées et catégorie supprimée ✔');
     await loadReferenceData();
     loadCategoriesAdmin();
+
+    const libelleSupprime = toutesCategories.find(c=>c.id===categorieId)?.libelle || categorieId;
+    const libelleCible = autresCategories.find(c=>c.id===nouvelleCategorieId)?.libelle || nouvelleCategorieId;
+    enregistrerAudit('suppression_categorie', {
+      tableConcernee: 'categories', elementId: categorieId,
+      resume: `Catégorie supprimée : "${libelleSupprime}" — ${nbOps} opération(s) et ${nbRegles} règle(s) réaffectées vers "${libelleCible}"`,
+      details: { nb_operations_reaffectees: nbOps, nb_regles_reaffectees: nbRegles, categorie_cible_id: nouvelleCategorieId }
+    });
   });
 }
 
@@ -3201,6 +3306,7 @@ async function loadCollaborateursAdmin(){
       if(error){ toast('Erreur : ' + error.message); return; }
       toast(message);
       await loadReferenceData();
+      enregistrerAudit('modification_salarie', { tableConcernee: 'collaborateurs', elementId: id, resume: `Salarié "${nomInput.value.trim()}" — ${champ} mis à jour : ${valeur ?? '—'}` });
     }
     nomInput.addEventListener('change', ()=>{
       const v = nomInput.value.trim();
@@ -3216,6 +3322,7 @@ async function loadCollaborateursAdmin(){
       toast(actifCheckbox.checked ? 'Salarié réactivé ✔' : 'Salarié désactivé ✔');
       await loadReferenceData();
       loadCollaborateursAdmin();
+      enregistrerAudit(actifCheckbox.checked ? 'reactivation_salarie' : 'desactivation_salarie', { tableConcernee: 'collaborateurs', elementId: id, resume: `Salarié "${nomInput.value.trim()}" ${actifCheckbox.checked?'réactivé':'désactivé'}` });
     });
   });
 }
@@ -3238,10 +3345,12 @@ async function loadMagasinsAdmin(){
     nomInput.addEventListener('change', async ()=>{
       const nom = nomInput.value.trim();
       if(!nom) return;
+      const ancien = nomInput.defaultValue;
       const { error } = await sb.from('magasins').update({ nom }).eq('id', id);
       if(error){ toast('Erreur : ' + error.message); return; }
       toast('Magasin renommé ✔');
       await loadReferenceData();
+      enregistrerAudit('modification_magasin', { tableConcernee: 'magasins', elementId: id, resume: `Magasin renommé : "${ancien}" → "${nom}"` });
     });
     tr.querySelector('.toggle-magasin-btn').addEventListener('click', async ()=>{
       const { data: current } = await sb.from('magasins').select('actif').eq('id', id).single();
@@ -3249,6 +3358,7 @@ async function loadMagasinsAdmin(){
       if(error){ toast('Erreur : ' + error.message); return; }
       await loadReferenceData();
       loadMagasinsAdmin();
+      enregistrerAudit(current.actif ? 'desactivation_magasin' : 'reactivation_magasin', { tableConcernee: 'magasins', elementId: id, resume: `Magasin "${nomInput.value}" ${current.actif?'désactivé':'réactivé'}` });
     });
   });
 }
@@ -3637,6 +3747,9 @@ async function loadAnalyseData(){
 
 async function validerOperation(tr){
   const id = tr.dataset.id;
+  const etaitDejaValidee = tr.dataset.etat === 'valide_manuel';
+  const ancienneCategorieId = tr.dataset.categorieFinale || null;
+  const ancienneAffectation = tr.dataset.affectation || null;
   const categorieId = tr.querySelector('.cat-select').value;
   const affectation = tr.querySelector('.aff-select').value;
   if(!categorieId){ toast('Choisissez une catégorie avant de valider.'); return; }
@@ -3650,6 +3763,20 @@ async function validerOperation(tr){
 
   if(error){ toast('Erreur : ' + error.message); return; }
   toast('Opération validée ✔');
+
+  // Une opération déjà validée qu'on modifie à nouveau sort du flux normal
+  // de catégorisation (qui n'est pas journalisé) — celle-ci l'est.
+  if(etaitDejaValidee){
+    const catMap = new Map(STATE.categories.map(c=>[c.id, c.libelle]));
+    const libelleOp = tr.children[2].textContent.trim();
+    enregistrerAudit('modification_operation_validee', {
+      tableConcernee: 'operations_bancaires',
+      elementId: id,
+      resume: `Opération déjà validée modifiée : "${libelleOp}" — catégorie ${catMap.get(ancienneCategorieId)||'—'} → ${catMap.get(categorieId)||'—'}${ancienneAffectation!==(affectation||'COMMUN') ? `, affectation ${ancienneAffectation||'—'} → ${affectation||'COMMUN'}` : ''}`,
+      details: { ancienne_categorie_id: ancienneCategorieId, nouvelle_categorie_id: categorieId, ancienne_affectation: ancienneAffectation, nouvelle_affectation: affectation||'COMMUN' },
+      gravite: 'avertissement'
+    });
+  }
 
   // Proposer de mémoriser la règle, avec un mot-clé pertinent et modifiable
   const libelle = tr.children[2].textContent.trim();
@@ -3675,6 +3802,7 @@ async function validerOperation(tr){
       toast(nbMaj > 0
         ? `Règle mémorisée — ${nbMaj} opération(s) déjà importée(s) mise(s) à jour automatiquement ✔`
         : 'Règle mémorisée pour les prochains imports ✔');
+      enregistrerAudit('creation_regle', { tableConcernee: 'regles_categorisation', resume: `Règle créée : mot-clé "${motCle.trim()}" (depuis une validation)` });
     }
   }
   loadControleRows();
@@ -3733,9 +3861,11 @@ async function validerSelection(){
 
   let manquantes = 0, ok = 0;
   const candidatsRegles = new Map(); // cle: motcle|categorie|affectation
+  const dejaValideesModifiees = []; // libellés des opérations déjà validées re-modifiées ici
 
   await Promise.all(checked.map(async (cb)=>{
     const tr = cb.closest('tr');
+    const etaitDejaValidee = tr.dataset.etat === 'valide_manuel';
     const categorieId = tr.querySelector('.cat-select').value;
     const affectation = tr.querySelector('.aff-select').value || 'COMMUN';
     if(!categorieId){ manquantes++; return; }
@@ -3748,6 +3878,7 @@ async function validerSelection(){
     }).eq('id', cb.dataset.id);
     if(!error){
       ok++;
+      if(etaitDejaValidee) dejaValideesModifiees.push(libelle);
       if(!dejaCouverte(libelle)){
         const motCle = suggestKeyword(libelle);
         if(motCle && motCle.length>=3){
@@ -3759,6 +3890,15 @@ async function validerSelection(){
 
   if(manquantes>0) toast(`${manquantes} ligne(s) ignorée(s) car sans catégorie choisie.`);
   toast(`${ok} opération(s) validée(s) ✔`);
+
+  if(dejaValideesModifiees.length>0){
+    enregistrerAudit('modification_operation_validee', {
+      tableConcernee: 'operations_bancaires',
+      resume: `${dejaValideesModifiees.length} opération(s) déjà validée(s) modifiée(s) via une validation groupée`,
+      details: { libelles: dejaValideesModifiees.slice(0,20) },
+      gravite: 'avertissement'
+    });
+  }
 
   if(candidatsRegles.size>0){
     const liste = Array.from(candidatsRegles.values());
@@ -3779,6 +3919,13 @@ async function validerSelection(){
       toast(echecs>0
         ? `${creees} règle(s) mémorisée(s), ${echecs} échec(s) (voir la console) ⚠️`
         : `${creees} règle(s) mémorisée(s) — ${totalMaj} autre(s) opération(s) mise(s) à jour dans tous les exercices ✔`);
+      if(creees>0){
+        enregistrerAudit('creation_regle', {
+          tableConcernee: 'regles_categorisation',
+          resume: `${creees} règle(s) créée(s) depuis une validation groupée`,
+          details: { mots_cles: liste.slice(0,20).map(r=>r.mot_cle) }
+        });
+      }
     }
   }
 
