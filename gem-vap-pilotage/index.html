@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>GEM.VAP Pilotage</title>
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#11153a">
-<link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -3494,7 +3494,7 @@ async function loadJournalVentes(){
    ============================================================ */
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('sw.js').catch(err=>console.error('Service worker non enregistré :', err));
+    navigator.serviceWorker.register('/sw.js').catch(err=>console.error('Service worker non enregistré :', err));
   });
 }
 
@@ -3519,7 +3519,7 @@ let VERSION_IGNOREE = null;    // dernière version proposée puis "Plus tard" c
 
 async function chargerVersionJson(){
   try{
-    const res = await fetch('version.json', { cache: 'no-store' });
+    const res = await fetch('/version.json', { cache: 'no-store' });
     if(!res.ok) return null;
     return await res.json();
   } catch(err){
