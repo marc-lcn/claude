@@ -240,6 +240,22 @@ function fmtDate(d){
   const dt = new Date(d);
   return dt.toLocaleDateString('fr-FR');
 }
+// Échappe un texte destiné à être injecté dans du innerHTML (protection XSS).
+// Réservée exclusivement au texte affiché en contenu HTML (ex: ${escapeHTML(op.libelle)}
+// dans un <td>...</td>). NE JAMAIS l'utiliser pour : une URL, un identifiant, une
+// valeur placée dans un attribut HTML (value="...", label="...") — ces contextes
+// utilisent déjà un échappement dédié aux guillemets (.replace(/"/g,'&quot;')) —
+// ou une valeur réutilisée telle quelle en JavaScript (ex: dans un confirm()/alert(),
+// qui affichent du texte brut et ne doivent pas recevoir d'entités HTML).
+function escapeHTML(str){
+  if(str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
 // Formate un objet Date en 'YYYY-MM-DD' à partir de ses composantes LOCALES.
 // Ne jamais utiliser .toISOString().slice(0,10) pour ça : ça convertit en UTC
 // et décale la date d'un jour en arrière l'été en France (UTC+2), ce qui a déjà
@@ -505,7 +521,7 @@ async function renderDashboard(){
       </div>
       <div class="card">
         <div class="kpi-label">Exercice en cours</div>
-        <div class="kpi-value" style="font-size:18px;">${STATE.currentExercice.libelle}</div>
+        <div class="kpi-value" style="font-size:18px;">${escapeHTML(STATE.currentExercice.libelle)}</div>
         <div class="kpi-sub">Du ${fmtDate(STATE.currentExercice.date_debut)} au ${fmtDate(STATE.currentExercice.date_fin)}</div>
       </div>
       <div class="card">
@@ -522,7 +538,7 @@ async function renderDashboard(){
         <div style="flex:1;">
           <div class="checklist-label">Chiffre d'affaires saisi</div>
           <div class="checklist-detail">
-            ${caChecklist.map(c=>`${c.nom} : ${c.saisis}/${c.total} jour(s) ouvré(s)${c.complet?' ✓':''}`).join(' · ')}
+            ${caChecklist.map(c=>`${escapeHTML(c.nom)} : ${c.saisis}/${c.total} jour(s) ouvré(s)${c.complet?' ✓':''}`).join(' · ')}
           </div>
         </div>
       </div>
@@ -556,7 +572,7 @@ async function renderDashboard(){
         <tbody>
           ${Object.values(parMagasin).map(m=>`
             <tr>
-              <td>${m.nom}</td>
+              <td>${escapeHTML(m.nom)}</td>
               <td>${fmtEUR(m.ca)}</td>
               <td>${totalCA>0 ? ((m.ca/totalCA)*100).toFixed(1)+' %' : '—'}</td>
             </tr>`).join('') || `<tr><td colspan="3" class="empty">Aucune donnée</td></tr>`}
@@ -585,7 +601,7 @@ async function renderCaPage(){
 
   content.innerHTML = `
     <div class="tabs" id="ca-magasin-tabs">
-      ${STATE.magasins.map(m=>`<button class="tab-btn" data-code="${m.code}">${m.nom}</button>`).join('')}
+      ${STATE.magasins.map(m=>`<button class="tab-btn" data-code="${m.code}">${escapeHTML(m.nom)}</button>`).join('')}
     </div>
     <div style="margin-bottom:16px;">
       <input type="month" id="ca-mois-input" value="${CA_MOIS_SELECTED}" style="padding:8px 12px;border:1px solid var(--border);border-radius:9px;font-size:13px;">
@@ -802,7 +818,7 @@ async function loadImportsLibrary(){
               return `
                 <tr data-id="${imp.id}">
                   <td style="text-transform:capitalize;">${moisLabel}</td>
-                  <td>${imp.nom_fichier || '—'}</td>
+                  <td>${escapeHTML(imp.nom_fichier) || '—'}</td>
                   <td>${docCell}</td>
                 </tr>`;
             }).join('')}
@@ -862,7 +878,7 @@ async function handleBankFile(e){
   const resetLabel = () => { uploadLabel.textContent = '📄 Cliquez pour choisir le fichier Excel exporté du Crédit Agricole'; e.target.value = ''; };
 
   if(!/\.(xlsx|xls)$/i.test(file.name)){
-    statusEl.innerHTML = `<div class="error-msg">« ${file.name} » n'est pas un fichier Excel (.xlsx/.xls) — c'est le seul format que cette case sait lire automatiquement. Si vous n'avez que le PDF du relevé, il doit être importé manuellement puis attaché dans « Relevés déjà importés » ci-dessous.</div>`;
+    statusEl.innerHTML = `<div class="error-msg">« ${escapeHTML(file.name)} » n'est pas un fichier Excel (.xlsx/.xls) — c'est le seul format que cette case sait lire automatiquement. Si vous n'avez que le PDF du relevé, il doit être importé manuellement puis attaché dans « Relevés déjà importés » ci-dessous.</div>`;
     resetLabel();
     return;
   }
@@ -876,7 +892,7 @@ async function handleBankFile(e){
     const sheet = wb.Sheets[wb.SheetNames[0]];
     rawRows = XLSX.utils.sheet_to_json(sheet, { header:1, defval:null });
   } catch(err){
-    statusEl.innerHTML = `<div class="error-msg">Impossible de lire « ${file.name} » : le fichier semble corrompu ou n'est pas un vrai fichier Excel (${err.message}).</div>`;
+    statusEl.innerHTML = `<div class="error-msg">Impossible de lire « ${escapeHTML(file.name)} » : le fichier semble corrompu ou n'est pas un vrai fichier Excel (${err.message}).</div>`;
     resetLabel();
     return;
   }
@@ -1082,7 +1098,7 @@ function renderSalariesPage(){
         <select id="salarie-select" style="padding:9px 10px;border:1px solid var(--border);border-radius:9px;font-size:13.5px;max-width:320px;">
           ${groupes.map(g=>`
             <optgroup label="${g.label}">
-              ${g.liste.map(c=>`<option value="${c.id}" ${c.id===SALARIE_SELECTED_ID?'selected':''}>${c.nom}${c.poste ? ' — '+c.poste : ''}</option>`).join('')}
+              ${g.liste.map(c=>`<option value="${c.id}" ${c.id===SALARIE_SELECTED_ID?'selected':''}>${escapeHTML(c.nom)}${c.poste ? ' — '+escapeHTML(c.poste) : ''}</option>`).join('')}
             </optgroup>`).join('')}
         </select>
       </div>
@@ -1167,10 +1183,10 @@ async function loadRecapSalaires(){
         ? (Number(s?.conges_n_1||0) + Number(s?.conges_n||0)) : null;
       return `
         <tr>
-          <td>${c.nom}</td>
-          <td>${c.poste || '—'}</td>
-          <td>${c.statut || '—'}</td>
-          <td style="text-align:center;">${c.niveau || '—'}</td>
+          <td>${escapeHTML(c.nom)}</td>
+          <td>${escapeHTML(c.poste) || '—'}</td>
+          <td>${escapeHTML(c.statut) || '—'}</td>
+          <td style="text-align:center;">${escapeHTML(c.niveau) || '—'}</td>
           <td>${calculerAnciennete(c.date_entree, c.date_sortie)}</td>
           <td style="text-transform:capitalize;">${moisLabel}</td>
           <td style="text-align:right;">${s?.net_paye!=null ? fmtEUR(s.net_paye) : '—'}</td>
@@ -1542,7 +1558,7 @@ async function handleSalaireFile(e){
     return;
   }
   if(!/\.pdf$/i.test(file.name)){
-    statusEl.innerHTML = `<div class="error-msg">« ${file.name} » n'est pas un PDF — c'est le seul format accepté ici.</div>`;
+    statusEl.innerHTML = `<div class="error-msg">« ${escapeHTML(file.name)} » n'est pas un PDF — c'est le seul format accepté ici.</div>`;
     resetInput();
     return;
   }
@@ -1585,11 +1601,11 @@ function renderBulkPreview(){
       <tbody>
         ${BULK_ROWS.map((r,i)=>`
           <tr style="${(!r.collaborateurId || !r.mois) ? 'background:rgba(220,38,38,.08);' : ''}">
-            <td style="font-size:12.5px;">${r.file.name}</td>
+            <td style="font-size:12.5px;">${escapeHTML(r.file.name)}</td>
             <td>
               <select class="bulk-collab-select" data-idx="${i}" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;">
                 <option value="">— Choisir —</option>
-                ${STATE.collaborateurs.map(c=>`<option value="${c.id}" ${c.id===r.collaborateurId?'selected':''}>${c.nom}</option>`).join('')}
+                ${STATE.collaborateurs.map(c=>`<option value="${c.id}" ${c.id===r.collaborateurId?'selected':''}>${escapeHTML(c.nom)}</option>`).join('')}
                 <option value="__new__">+ Nouveau salarié…</option>
               </select>
             </td>
@@ -1701,7 +1717,7 @@ async function loadSalairesLibrary(){
                 <tr data-import-id="${imp?.id || ''}">
                   <td style="text-transform:capitalize;">${moisLabel}</td>
                   <td>${TYPE_DOCUMENT_LABELS[s.type_document] || 'Bulletin de salaire'}</td>
-                  <td>${imp?.nom_fichier || '—'}</td>
+                  <td>${escapeHTML(imp?.nom_fichier) || '—'}</td>
                   <td>${docCell}</td>
                   <td><button class="btn secondary small toggle-detail-sal" data-salaire-id="${s.id}">✏️ Chiffres</button></td>
                 </tr>
@@ -1917,7 +1933,7 @@ function renderVendeursPage(){
         <select id="vendeur-select" style="padding:9px 10px;border:1px solid var(--border);border-radius:9px;font-size:13.5px;max-width:320px;">
           ${groupes.map(g=>`
             <optgroup label="${g.label}">
-              ${g.liste.map(c=>`<option value="${c.id}" ${c.id===VENDEUR_SELECTED_ID?'selected':''}>${c.nom}</option>`).join('')}
+              ${g.liste.map(c=>`<option value="${c.id}" ${c.id===VENDEUR_SELECTED_ID?'selected':''}>${escapeHTML(c.nom)}</option>`).join('')}
             </optgroup>`).join('')}
         </select>
       </div>
@@ -1948,7 +1964,7 @@ async function handleVentesVendeurFile(e){
   const resetInput = () => { e.target.value = ''; };
 
   if(!mois){ statusEl.innerHTML = `<div class="error-msg">Choisissez d'abord le mois concerné.</div>`; resetInput(); return; }
-  if(!/\.pdf$/i.test(file.name)){ statusEl.innerHTML = `<div class="error-msg">« ${file.name} » n'est pas un PDF.</div>`; resetInput(); return; }
+  if(!/\.pdf$/i.test(file.name)){ statusEl.innerHTML = `<div class="error-msg">« ${escapeHTML(file.name)} » n'est pas un PDF.</div>`; resetInput(); return; }
 
   statusEl.innerHTML = `<div class="hint">Analyse du document...</div>`;
   if(!(await attendrePdfjs())){ statusEl.innerHTML = `<div class="error-msg">pdf.js non chargé (bloqueur de script/pub ? pas de connexion internet ?)</div>`; resetInput(); return; }
@@ -1982,18 +1998,18 @@ function renderVendeurBulkPreview(){
       <tbody>
         ${VENDEUR_BULK_ROWS.map((r,i)=>`
           <tr style="${!r.magasinId ? 'background:rgba(220,38,38,.08);' : ''}">
-            <td style="font-size:12.5px;">${r.magasin||'—'}</td>
+            <td style="font-size:12.5px;">${escapeHTML(r.magasin)||'—'}</td>
             <td>
               <select class="vb-magasin-select" data-idx="${i}" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;">
                 <option value="">— Choisir —</option>
-                ${STATE.magasins.map(m=>`<option value="${m.id}" ${m.id===r.magasinId?'selected':''}>${m.nom}</option>`).join('')}
+                ${STATE.magasins.map(m=>`<option value="${m.id}" ${m.id===r.magasinId?'selected':''}>${escapeHTML(m.nom)}</option>`).join('')}
               </select>
             </td>
-            <td style="font-size:12.5px;">${r.vendeur}</td>
+            <td style="font-size:12.5px;">${escapeHTML(r.vendeur)}</td>
             <td>
               <select class="vb-collab-select" data-idx="${i}" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;">
                 <option value="">— Aucun —</option>
-                ${STATE.collaborateurs.map(c=>`<option value="${c.id}" ${c.id===r.collaborateurId?'selected':''}>${c.nom}</option>`).join('')}
+                ${STATE.collaborateurs.map(c=>`<option value="${c.id}" ${c.id===r.collaborateurId?'selected':''}>${escapeHTML(c.nom)}</option>`).join('')}
               </select>
             </td>
             <td style="text-align:right;">${fmtEUR(r.ht)}</td>
@@ -2131,7 +2147,7 @@ function renderVendeurBulkFolderPreview(){
           const sansCollab = r.lignes.filter(l=>l.magasinId && !l.collaborateurId && l.vendeur!=='(non attribué)' && l.vendeur!=='Soutien').length;
           return `
           <tr style="${r.erreur ? 'background:rgba(220,38,38,.08);' : ''}">
-            <td style="font-size:12.5px;">${r.file.name}</td>
+            <td style="font-size:12.5px;">${escapeHTML(r.file.name)}</td>
             <td style="text-transform:capitalize;">${r.mois ? new Date(r.mois+'-01').toLocaleDateString('fr-FR',{month:'long',year:'numeric'}) : '—'}</td>
             <td>${r.erreur ? `<span style="color:#c22b2b;">${r.erreur}</span>` : r.lignes.length}</td>
             <td>${sansMagasin || '—'}</td>
@@ -2198,8 +2214,8 @@ async function loadVendeurLeaderboard(){
         ${trie.map((r,i)=>`
           <tr>
             <td>${i+1}</td>
-            <td>${r.nom_vendeur_brut}</td>
-            <td>${r.magasins?.nom || '—'}</td>
+            <td>${escapeHTML(r.nom_vendeur_brut)}</td>
+            <td>${escapeHTML(r.magasins?.nom) || '—'}</td>
             <td style="text-align:right;">${fmtEUR(r.ht)}</td>
             <td style="text-align:right;">${fmtEUR(r.ttc)}</td>
             <td style="text-align:right;">${r.nb_ventes ?? '—'}</td>
@@ -2239,7 +2255,7 @@ async function loadVendeurHistorique(){
           return `
           <tr>
             <td style="text-transform:capitalize;">${moisLabel}</td>
-            <td>${r.magasins?.nom || '—'}</td>
+            <td>${escapeHTML(r.magasins?.nom) || '—'}</td>
             <td style="text-align:right;">${fmtEUR(r.ht)}</td>
             <td style="text-align:right;">${fmtEUR(r.ttc)}</td>
             <td style="text-align:right;">${r.nb_ventes ?? '—'}</td>
@@ -2381,13 +2397,13 @@ function buildRowHtml(op){
   <tr data-id="${op.id}" data-path="${op.piece_jointe_path||''}">
     <td><input type="checkbox" class="row-check" data-id="${op.id}"></td>
     <td>${fmtDate(op.date_operation)}</td>
-    <td style="max-width:260px;white-space:normal;">${op.libelle}</td>
+    <td style="max-width:260px;white-space:normal;">${escapeHTML(op.libelle)}</td>
     <td>${op.debit ? fmtEUR(op.debit) : ''}</td>
     <td>${op.credit ? fmtEUR(op.credit) : ''}</td>
     <td>
       <select class="row-select cat-select">
         <option value="">—</option>
-        ${STATE.categories.map(c=>`<option value="${c.id}" ${c.id===(op.categorie_finale_id||op.categorie_proposee_id)?'selected':''}>${c.libelle}</option>`).join('')}
+        ${STATE.categories.map(c=>`<option value="${c.id}" ${c.id===(op.categorie_finale_id||op.categorie_proposee_id)?'selected':''}>${escapeHTML(c.libelle)}</option>`).join('')}
       </select>
     </td>
     <td>
@@ -2690,7 +2706,7 @@ function renderParametresPage(){
           <div class="form-row">
             <div class="field"><label>Mot-clé</label><input type="text" id="new-regle-motcle" placeholder="Ex : Orange"></div>
             <div class="field"><label>Catégorie</label>
-              <select id="new-regle-categorie">${STATE.categories.map(c=>`<option value="${c.id}">${c.libelle}</option>`).join('')}</select>
+              <select id="new-regle-categorie">${STATE.categories.map(c=>`<option value="${c.id}">${escapeHTML(c.libelle)}</option>`).join('')}</select>
             </div>
             <div class="field"><label>Affectation</label>
               <select id="new-regle-affectation">${affectationsDisponibles().map(a=>`<option value="${a}">${a}</option>`).join('')}</select>
@@ -2809,7 +2825,7 @@ function renderReglesTable(recherche){
   if(terme){
     filtres = regles.filter(r => (r.mot_cle||'').toLowerCase().includes(terme));
   }
-  if(filtres.length===0){ tbody.innerHTML = `<tr><td colspan="6" class="empty">Aucun mot-clé ne correspond à "${recherche}".</td></tr>`; return; }
+  if(filtres.length===0){ tbody.innerHTML = `<tr><td colspan="6" class="empty">Aucun mot-clé ne correspond à "${escapeHTML(recherche)}".</td></tr>`; return; }
 
   const sorted = [...filtres].sort((a,b)=>{
     const ca = catMap.get(a.categorie_id) || '';
@@ -2822,7 +2838,7 @@ function renderReglesTable(recherche){
       <td><input type="text" class="rename-regle-input" value="${(r.mot_cle||'').replace(/"/g,'&quot;')}" style="width:100%;max-width:180px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:13px;"></td>
       <td>
         <select class="regle-categorie-select row-select">
-          ${categories.map(c=>`<option value="${c.id}" ${c.id===r.categorie_id?'selected':''}>${c.libelle}</option>`).join('')}
+          ${categories.map(c=>`<option value="${c.id}" ${c.id===r.categorie_id?'selected':''}>${escapeHTML(c.libelle)}</option>`).join('')}
         </select>
       </td>
       <td>
@@ -3044,7 +3060,7 @@ async function afficherLignesLieesCategorie(categorieId, tr, toutesCategories){
       <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
         <label style="font-size:13px;color:var(--muted);">Réaffecter tout vers</label>
         <select id="reaffecter-vers-select" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
-          ${autresCategories.map(c=>`<option value="${c.id}">${c.libelle}</option>`).join('')}
+          ${autresCategories.map(c=>`<option value="${c.id}">${escapeHTML(c.libelle)}</option>`).join('')}
         </select>
         <button class="btn small" id="reaffecter-supprimer-btn">Réaffecter puis supprimer</button>
       </div>
@@ -3054,7 +3070,7 @@ async function afficherLignesLieesCategorie(categorieId, tr, toutesCategories){
           <table>
             <thead><tr><th>Date</th><th>Libellé</th><th>Montant</th></tr></thead>
             <tbody>
-              ${(ops||[]).map(o=>`<tr><td>${fmtDate(o.date_operation)}</td><td style="max-width:300px;white-space:normal;">${o.libelle}</td><td>${o.debit?fmtEUR(o.debit):(o.credit?fmtEUR(o.credit):'')}</td></tr>`).join('')}
+              ${(ops||[]).map(o=>`<tr><td>${fmtDate(o.date_operation)}</td><td style="max-width:300px;white-space:normal;">${escapeHTML(o.libelle)}</td><td>${o.debit?fmtEUR(o.debit):(o.credit?fmtEUR(o.credit):'')}</td></tr>`).join('')}
             </tbody>
           </table>
         </div>` : ''}
@@ -3228,7 +3244,7 @@ async function loadJournalVentes(){
     const ecartOk = Math.abs(ecart) < 1;
     return `
     <div class="card" style="margin-bottom:16px;">
-      <h3 style="margin-bottom:14px;">${j.magasins?.nom || '—'}</h3>
+      <h3 style="margin-bottom:14px;">${escapeHTML(j.magasins?.nom) || '—'}</h3>
       <div class="grid grid-4">
         <div><div class="kpi-label">CA HT</div><div class="kpi-value" style="font-size:20px;">${fmtEUR(j.ca_ht)}</div></div>
         <div><div class="kpi-label">TVA collectée</div><div class="kpi-value" style="font-size:20px;">${fmtEUR(j.tva)}</div></div>
@@ -3310,12 +3326,12 @@ function renderAnalysePage(){
 
   content.innerHTML = `
     <div class="tabs" id="magasin-tabs">
-      ${STATE.magasins.map(m=>`<button class="tab-btn" data-code="${m.code}">${m.nom}</button>`).join('')}
+      ${STATE.magasins.map(m=>`<button class="tab-btn" data-code="${m.code}">${escapeHTML(m.nom)}</button>`).join('')}
     </div>
 
     <div class="section-title">Exercice</div>
     <div class="pill-row" id="exercices-row">
-      ${STATE.exercices.map(e=>`<button class="pill-toggle" data-exercice="${e.id}">${e.libelle}</button>`).join('')}
+      ${STATE.exercices.map(e=>`<button class="pill-toggle" data-exercice="${e.id}">${escapeHTML(e.libelle)}</button>`).join('')}
     </div>
 
     <div class="section-title">Année civile <span style="font-weight:400;color:var(--muted);font-size:12px;">(utilisée seulement si aucun exercice n'est coché)</span></div>
@@ -3452,10 +3468,10 @@ function kpiCardsHtml(k, magasinNom){
         <tbody>
           ${k.categoriesTriees.map(([lib,montant])=>`
             <tr>
-              <td>${lib}</td>
+              <td>${escapeHTML(lib)}</td>
               <td>${fmtEUR(montant)}</td>
               <td>${k.caTotal>0 ? ((montant/k.caTotal)*100).toFixed(1)+' %' : '—'}</td>
-            </tr>`).join('') || `<tr><td colspan="3" class="empty">Aucune dépense validée et affectée à ${magasinNom} sur cette période.</td></tr>`}
+            </tr>`).join('') || `<tr><td colspan="3" class="empty">Aucune dépense validée et affectée à ${escapeHTML(magasinNom)} sur cette période.</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -3508,11 +3524,11 @@ async function loadAnalyseData(){
     body.innerHTML = `
       <div class="grid grid-2">
         <div>
-          <div class="section-title" style="margin-top:0;text-transform:capitalize;">${periodeA.label}</div>
+          <div class="section-title" style="margin-top:0;text-transform:capitalize;">${escapeHTML(periodeA.label)}</div>
           ${kpiCardsHtml(kA, magasin.nom)}
         </div>
         <div>
-          <div class="section-title" style="margin-top:0;text-transform:capitalize;">${periodeB.label}</div>
+          <div class="section-title" style="margin-top:0;text-transform:capitalize;">${escapeHTML(periodeB.label)}</div>
           ${kpiCardsHtml(kB, magasin.nom)}
         </div>
       </div>
@@ -3549,7 +3565,7 @@ async function loadAnalyseData(){
 
   const k = await computeKpis(magasin, start, end, predicate);
   body.innerHTML = kpiCardsHtml(k, magasin.nom) + `
-    <div class="hint" style="margin-top:10px;">Seules les opérations bancaires <b>validées</b> et affectées à ${magasin.nom} sont comptées. Les charges communes (COMMUN) ne sont pas incluses tant que la règle de répartition n'est pas configurée.</div>
+    <div class="hint" style="margin-top:10px;">Seules les opérations bancaires <b>validées</b> et affectées à ${escapeHTML(magasin.nom)} sont comptées. Les charges communes (COMMUN) ne sont pas incluses tant que la règle de répartition n'est pas configurée.</div>
   `;
 }
 
