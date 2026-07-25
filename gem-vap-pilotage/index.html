@@ -870,6 +870,36 @@ async function voirDocument(bucket, path){
   window.open(data.signedUrl, '_blank');
 }
 
+// Version de l'algorithme d'empreinte anti-doublon (voir calculerEmpreinteOperation
+// ci-dessous). Le numéro de version fait partie intégrante de la chaîne produite
+// (préfixe "v1|", "v2|"...) : si l'algorithme change un jour, les nouvelles
+// empreintes ne pourront jamais entrer en collision avec les anciennes d'une
+// même opération. Toute évolution de la méthode de calcul doit impérativement
+// être accompagnée d'une mise à jour du script SQL de backfill correspondant
+// (voir supabase-migrations/26_import_bancaire_idempotent_etape1_backfill.sql),
+// qui n'est PAS synchronisé automatiquement avec ce code.
+const EMPREINTE_VERSION = 1;
+
+// Construit l'empreinte unique d'une opération bancaire importée, utilisée par
+// la base (index unique sur operations_bancaires.empreinte_import, migration
+// Lot C) pour empêcher tout doublon lors d'un réimport. C'est le SEUL endroit
+// du code où cette chaîne doit être construite — toute évolution future de
+// l'algorithme ne doit modifier QUE cette fonction (+ son miroir SQL).
+//   dateISO    : jour de l'opération, format 'YYYY-MM-DD' (UTC)
+//   libelle    : libellé brut tel que lu dans le fichier
+//   debit      : montant débit (nombre ou null)
+//   credit     : montant crédit (nombre ou null)
+//   occurrence : rang (0, 1, 2…) de cette ligne parmi les lignes du même
+//                import ayant exactement le même date/libellé/débit/crédit —
+//                distingue les opérations réellement identiques et légitimes
+//                (même jour, même libellé, même montant) sans les fusionner
+function calculerEmpreinteOperation(dateISO, libelle, debit, credit, occurrence){
+  const libelleNorm = String(libelle||'').trim().replace(/\s+/g,' ').toUpperCase();
+  const debitStr = (debit!=null && debit!=='') ? Number(debit).toFixed(2) : '';
+  const creditStr = (credit!=null && credit!=='') ? Number(credit).toFixed(2) : '';
+  return `v${EMPREINTE_VERSION}|${dateISO}|${libelleNorm}|${debitStr}|${creditStr}|${occurrence}`;
+}
+
 async function handleBankFile(e){
   const file = e.target.files[0];
   if(!file) return;
@@ -948,23 +978,44 @@ async function handleBankFile(e){
   }).select().single();
   if(importErr){ statusEl.innerHTML = `<div class="error-msg">Erreur lors de l'import : ${importErr.message}</div>`; return; }
 
-  const toInsert = dataRows.map(r=>{
-    let dateVal = r[colDate];
-    if(dateVal instanceof Date) dateVal = dateVal.toISOString();
-    else dateVal = new Date(dateVal).toISOString();
+  // Compte les lignes du fichier ayant exactement le même date/libellé/débit/
+  // crédit, pour attribuer à chaque occurrence un rang stable (voir doc de
+  // calculerEmpreinteOperation ci-dessus). La clé de comptage est obtenue via
+  // cette même fonction (occurrence provisoire à 0, non stockée) : aucune
+  // logique de normalisation n'est dupliquée ici.
+  const occurrences = new Map();
+  let anomalies = 0;
+  const toInsert = [];
+
+  for(const r of dataRows){
+    let dateVal;
+    try{
+      const raw = r[colDate];
+      dateVal = raw instanceof Date ? raw.toISOString() : new Date(raw).toISOString();
+      if(isNaN(new Date(dateVal).getTime())) throw new Error('date invalide');
+    } catch(err){
+      anomalies++;
+      continue;
+    }
 
     const libelle = String(r[colLibelle]);
     const debit = colDebit>-1 ? parseMontant(r[colDebit]) : null;
     const credit = colCredit>-1 ? parseMontant(r[colCredit]) : null;
+    const dateISO = dateVal.slice(0,10);
+
+    const cleGroupe = calculerEmpreinteOperation(dateISO, libelle, debit, credit, 0);
+    const occurrence = occurrences.get(cleGroupe) || 0;
+    occurrences.set(cleGroupe, occurrence + 1);
+    const empreinte_import = calculerEmpreinteOperation(dateISO, libelle, debit, credit, occurrence);
 
     const match = matchRegle(libelle);
     let etat = 'a_categoriser';
     if(match){
       etat = match.validation_auto ? 'valide_manuel' : (match.confiance >= 95 ? 'reconnu_auto' : 'a_verifier');
     }
-    const exerciceOp = findExerciceForDate(dateVal.slice(0,10));
+    const exerciceOp = findExerciceForDate(dateISO);
 
-    return {
+    toInsert.push({
       exercice_id: exerciceOp?.id || null,
       import_id: importRow.id,
       date_operation: dateVal,
@@ -977,19 +1028,33 @@ async function handleBankFile(e){
       mot_cle_reconnu: match ? match.mot_cle : null,
       confiance: match ? match.confiance : 0,
       etat: etat,
-      valide_manuellement: !!(match && match.validation_auto)
-    };
-  });
+      valide_manuellement: !!(match && match.validation_auto),
+      empreinte_import
+    });
+  }
 
-  const { error: insertErr } = await sb.from('operations_bancaires').insert(toInsert);
+  // Upsert avec ignoreDuplicates : la base (index unique sur empreinte_import,
+  // migration Lot C) ignore silencieusement toute ligne déjà présente. C'est
+  // la protection de fond — même en cas de réimport, de double-clic ou
+  // d'import concurrent, aucun doublon ne peut être créé. Le rapport ci-dessous
+  // se base sur ce que la base a réellement inséré, pas sur une estimation.
+  const { data: inserees, error: insertErr } = await sb.from('operations_bancaires')
+    .upsert(toInsert, { onConflict: 'empreinte_import', ignoreDuplicates: true })
+    .select('id, etat');
+
   document.getElementById('upload-label').textContent = '📄 Cliquez pour choisir le fichier Excel exporté du Crédit Agricole';
   if(insertErr){
     statusEl.innerHTML = `<div class="error-msg">Erreur lors de l'enregistrement : ${insertErr.message}</div>`;
     return;
   }
-  const reconnues = toInsert.filter(r=>r.etat==='reconnu_auto').length;
-  statusEl.innerHTML = `<div class="badge green" style="font-size:13px;">${toInsert.length} opérations importées — ${reconnues} reconnues automatiquement</div>
-    <div class="hint">Rendez-vous dans « Opérations à contrôler » pour vérifier le reste.</div>`;
+
+  const totalAnalysees = dataRows.length;
+  const nouvelles = (inserees||[]).length;
+  const doublons = toInsert.length - nouvelles;
+  const reconnues = (inserees||[]).filter(r=>r.etat==='reconnu_auto').length;
+
+  statusEl.innerHTML = `<div class="badge green" style="font-size:13px;">${totalAnalysees} opération(s) analysée(s) — ${nouvelles} nouvelle(s) importée(s) — ${doublons} doublon(s) ignoré(s)${anomalies>0?` — ${anomalies} anomalie(s)`:''}</div>
+    <div class="hint">${reconnues} reconnue(s) automatiquement. Rendez-vous dans « Opérations à contrôler » pour vérifier le reste.</div>`;
 }
 
 function parseMontant(v){
