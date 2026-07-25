@@ -2727,7 +2727,11 @@ async function loadJournalVentes(){
   const tries = [...journaux].sort((a,b)=> ordre.indexOf(a.magasins?.code) - ordre.indexOf(b.magasins?.code));
 
   body.innerHTML = tries.map(j=>{
-    const caSaisi = caParMagasin[j.magasin_id] || 0;
+    // Un magasin "enfant" (ex: Internet, rattaché administrativement à Ibos) voit ses ventes
+    // apparaître comme "Facture" sur le journal de caisse du magasin parent : on les additionne
+    // avant de comparer, sinon un écart artificiel apparaît des deux côtés.
+    const enfants = STATE.magasins.filter(m=>m.magasin_parent_id===j.magasin_id).map(m=>m.id);
+    const caSaisi = (caParMagasin[j.magasin_id] || 0) + enfants.reduce((s,id)=>s + (caParMagasin[id]||0), 0);
     const ecart = caSaisi - Number(j.ca_ht||0);
     const ecartOk = Math.abs(ecart) < 1;
     return `
