@@ -275,15 +275,26 @@ function escapeHTML(str){
 //                      nouvelles valeurs...), en complément du résumé
 //   gravite         : 'info' (défaut), 'avertissement' ou 'erreur'
 async function enregistrerAudit(typeAction, { tableConcernee=null, elementId=null, resume, details=null, gravite='info' }){
-  const { error } = await sb.from('journal_audit').insert({
-    type_action: typeAction,
-    gravite,
-    table_concernee: tableConcernee,
-    element_id: elementId,
-    resume,
-    details
-  });
-  if(error) console.error('Erreur journal d\'audit :', error);
+  // try/catch volontairement large : cette fonction ne doit JAMAIS faire
+  // remonter d'exception à l'appelant, même en cas d'échec réseau imprévu
+  // (pas seulement une erreur Supabase classique via { error }). Tous les
+  // appels à enregistrerAudit() dans ce fichier sont volontairement non
+  // "awaités" par l'action métier qui les déclenche : ils sont écrits après
+  // confirmation du succès de cette action, et leur échec éventuel ne doit
+  // ni l'annuler ni la faire paraître en échec côté utilisateur.
+  try{
+    const { error } = await sb.from('journal_audit').insert({
+      type_action: typeAction,
+      gravite,
+      table_concernee: tableConcernee,
+      element_id: elementId,
+      resume,
+      details
+    });
+    if(error) console.error('Erreur journal d\'audit :', error);
+  } catch(err){
+    console.error('Erreur journal d\'audit (exception) :', err);
+  }
 }
 
 // Formate un objet Date en 'YYYY-MM-DD' à partir de ses composantes LOCALES.
