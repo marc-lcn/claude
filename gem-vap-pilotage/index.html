@@ -186,6 +186,7 @@ tr.ligne-fermee input[type="number"]{background:#e5e7f0;}
       <button class="nav-item" data-page="ca">🧾 Saisie du CA</button>
       <button class="nav-item" data-page="banque">🏦 Import bancaire</button>
       <button class="nav-item" data-page="salaries">👥 Salariés</button>
+      <button class="nav-item" data-page="vendeurs">🏆 CA par vendeur</button>
       <button class="nav-item" data-page="controle">✅ Opérations à contrôler</button>
       <button class="nav-item" data-page="analyse">🏬 Analyse par magasin</button>
       <button class="nav-item" data-page="journal">🧾 Journal des ventes</button>
@@ -352,6 +353,7 @@ const PAGE_TITLES = {
   ca: 'Saisie du chiffre d\'affaires',
   banque: 'Import bancaire',
   salaries: 'Salariés',
+  vendeurs: 'CA par vendeur',
   controle: 'Opérations à contrôler',
   analyse: 'Analyse par magasin',
   journal: 'Journal des ventes',
@@ -373,6 +375,7 @@ function renderPage(){
   else if(STATE.page==='ca') renderCaPage();
   else if(STATE.page==='banque') renderBanquePage();
   else if(STATE.page==='salaries') renderSalariesPage();
+  else if(STATE.page==='vendeurs') renderVendeursPage();
   else if(STATE.page==='controle') renderControlePage();
   else if(STATE.page==='analyse') renderAnalysePage();
   else if(STATE.page==='journal') renderJournalVentesPage();
@@ -1768,6 +1771,358 @@ async function loadSalairesLibrary(){
       loadRecapSalaires();
       loadSalairesLibrary();
     });
+  });
+}
+
+/* ============================================================
+   PAGE : CA PAR VENDEUR
+   ============================================================ */
+let VENDEUR_BULK_ROWS = [];
+let VENDEUR_BULK_MOIS = null;
+let VENDEUR_BULK_FILE = null;
+let VENDEUR_MOIS_LEADERBOARD = null;
+let VENDEUR_SELECTED_ID = null;
+
+function parseNombreFR(str){
+  if(str==null) return null;
+  const n = parseFloat(String(str).replace(/\s/g,'').replace(',','.'));
+  return isNaN(n) ? null : n;
+}
+
+// Le rapport "Synthèse des ventes" du logiciel de caisse imprime toujours les mêmes
+// libellés de magasin, différents des noms utilisés ailleurs dans l'appli.
+function deviverMagasinVendeur(labelBrut){
+  const norm = sansAccents(labelBrut||'').toUpperCase();
+  let code = null;
+  if(norm.includes('MERIDIEN')) code = 'IBOS';
+  else if(norm.includes('ORMEAU')) code = 'TARBES';
+  else if(norm.includes('PAU')) code = 'PAU';
+  return code ? STATE.magasins.find(m=>m.code===code) : null;
+}
+
+// Table "Vendeur / HT / TTC / Nb Ventes / Nb Articles / Panier / Nb Art Moyen" avec des
+// sous-totaux par magasin intercalés. L'ordre du texte pdf.js est mélangé colonne par
+// colonne (pas ligne par ligne) : on regroupe donc par position (x,y) plutôt que par ordre.
+function analyserVentesVendeurPdf(items){
+  const headerVendeur = items.find(it=>it.str.trim()==='Vendeur');
+  const footer = items.find(it=>it.str.trim().startsWith('Nombre de lignes'));
+  if(!headerVendeur) return [];
+  const yHaut = headerVendeur.y;
+  const yBas = footer ? footer.y : 0;
+
+  const colonneDe = (x) => {
+    if(x < 100) return 'nom';
+    if(x < 260) return 'ht';
+    if(x < 320) return 'ttc';
+    if(x < 400) return 'nbVentes';
+    if(x < 440) return 'nbArticles';
+    if(x < 500) return 'panier';
+    return 'nbArtMoyen';
+  };
+
+  const lignesItems = items.filter(it => it.str.trim()!=='' && it.y < yHaut && it.y > yBas);
+  const groupes = [];
+  for(const it of lignesItems){
+    let g = groupes.find(g=>Math.abs(g.y - it.y) < 2);
+    if(!g){ g = { y: it.y, items: [] }; groupes.push(g); }
+    g.items.push(it);
+  }
+  groupes.sort((a,b)=> b.y - a.y);
+
+  const MAGASINS_CONNUS = ['Tarbes Meridien', 'Pau', 'Tarbes Ormeau'];
+  let magasinActuel = null;
+  const brutes = [];
+  for(const g of groupes){
+    const col = {};
+    for(const it of g.items) col[colonneDe(it.x)] = it.str.trim();
+    const nom = col.nom || null;
+    if(nom && MAGASINS_CONNUS.includes(nom)){ magasinActuel = nom; continue; }
+    brutes.push({
+      magasin: magasinActuel, vendeur: nom || '(non attribué)',
+      ht: parseNombreFR(col.ht), ttc: parseNombreFR(col.ttc),
+      nbVentes: parseNombreFR(col.nbVentes), nbArticles: parseNombreFR(col.nbArticles),
+      panier: parseNombreFR(col.panier), nbArtMoyen: parseNombreFR(col.nbArtMoyen),
+    });
+  }
+
+  // Fusionne les lignes dupliquées (ex: un vendeur ayant utilisé deux caisses/sessions) :
+  // le panier moyen imprimé (TTC/nb ventes) n'est recalculé qu'en cas de fusion réelle,
+  // sinon on garde tel quel la valeur du document plutôt que de la reconstruire.
+  const groupesFusion = {};
+  for(const b of brutes){
+    const cle = `${b.magasin}||${b.vendeur}`;
+    if(!groupesFusion[cle]) groupesFusion[cle] = [];
+    groupesFusion[cle].push(b);
+  }
+  return Object.values(groupesFusion).map(lignes=>{
+    if(lignes.length===1) return lignes[0];
+    const f = { magasin: lignes[0].magasin, vendeur: lignes[0].vendeur, ht:0, ttc:0, nbVentes:0, nbArticles:0 };
+    for(const b of lignes){ f.ht+=b.ht||0; f.ttc+=b.ttc||0; f.nbVentes+=b.nbVentes||0; f.nbArticles+=b.nbArticles||0; }
+    f.panier = f.nbVentes>0 ? Math.round((f.ttc/f.nbVentes)*100)/100 : null;
+    f.nbArtMoyen = f.nbVentes>0 ? Math.round((f.nbArticles/f.nbVentes)*100)/100 : null;
+    return f;
+  });
+}
+
+function renderVendeursPage(){
+  const content = document.getElementById('content');
+  if(!VENDEUR_MOIS_LEADERBOARD){
+    const now = new Date();
+    VENDEUR_MOIS_LEADERBOARD = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  }
+  if(!STATE.collaborateurs || STATE.collaborateurs.length===0){
+    content.innerHTML = `<div class="empty">Aucun salarié actif enregistré.</div>`;
+    return;
+  }
+  if(!VENDEUR_SELECTED_ID || !STATE.collaborateurs.some(c=>c.id===VENDEUR_SELECTED_ID)){
+    VENDEUR_SELECTED_ID = STATE.collaborateurs[0].id;
+  }
+  const groupes = affectationsDisponibles().filter(code=>code!=='DIRIGEANT').map(code=>{
+    const magasin = STATE.magasins.find(m=>m.code===code);
+    const label = magasin ? magasin.nom : (code==='COMMUN' ? 'Commun' : code);
+    return { code, label, liste: STATE.collaborateurs.filter(c=>c.affectation===code) };
+  }).filter(g=>g.liste.length>0);
+
+  content.innerHTML = `
+    <div class="section-title">📎 Importer une synthèse des ventes</div>
+    <div class="card">
+      <div class="hint">PDF "Synthèse des ventes" du logiciel de caisse (par vendeur, tous magasins). Le magasin et le salarié sont devinés automatiquement — vérifiez avant de valider.</div>
+      <div style="height:12px"></div>
+      <div class="form-row">
+        <div class="field"><label>Mois concerné</label><input type="month" id="vendeur-mois-input"></div>
+        <div class="field"><label>Fichier (PDF)</label><label class="btn secondary" style="cursor:pointer;display:inline-block;">Choisir le fichier<input type="file" id="vendeur-file-input" accept=".pdf" hidden></label></div>
+      </div>
+      <div id="vendeur-import-status" style="margin-top:14px;"></div>
+      <div id="vendeur-bulk-preview"></div>
+    </div>
+
+    <div class="section-title">🏆 Classement du mois</div>
+    <div class="card">
+      <input type="month" id="vendeur-leaderboard-mois" value="${VENDEUR_MOIS_LEADERBOARD}" style="padding:8px 12px;border:1px solid var(--border);border-radius:9px;font-size:13px;margin-bottom:14px;">
+      <div id="vendeur-leaderboard"><div class="empty">Chargement...</div></div>
+    </div>
+
+    <div class="section-title">📈 Historique d'un vendeur</div>
+    <div class="card">
+      <div class="field" style="margin-bottom:14px;">
+        <label>Vendeur</label>
+        <select id="vendeur-select" style="padding:9px 10px;border:1px solid var(--border);border-radius:9px;font-size:13.5px;max-width:320px;">
+          ${groupes.map(g=>`
+            <optgroup label="${g.label}">
+              ${g.liste.map(c=>`<option value="${c.id}" ${c.id===VENDEUR_SELECTED_ID?'selected':''}>${c.nom}</option>`).join('')}
+            </optgroup>`).join('')}
+        </select>
+      </div>
+      <div id="vendeur-historique"><div class="empty">Chargement...</div></div>
+    </div>
+  `;
+
+  document.getElementById('vendeur-file-input').addEventListener('change', handleVentesVendeurFile);
+  document.getElementById('vendeur-leaderboard-mois').addEventListener('change', (e)=>{
+    if(e.target.value){ VENDEUR_MOIS_LEADERBOARD = e.target.value; loadVendeurLeaderboard(); }
+  });
+  document.getElementById('vendeur-select').addEventListener('change', (e)=>{
+    VENDEUR_SELECTED_ID = e.target.value;
+    loadVendeurHistorique();
+  });
+
+  loadVendeurLeaderboard();
+  loadVendeurHistorique();
+}
+
+async function handleVentesVendeurFile(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('vendeur-import-status');
+  const moisInput = document.getElementById('vendeur-mois-input');
+  const mois = moisInput.value;
+  const resetInput = () => { e.target.value = ''; };
+
+  if(!mois){ statusEl.innerHTML = `<div class="error-msg">Choisissez d'abord le mois concerné.</div>`; resetInput(); return; }
+  if(!/\.pdf$/i.test(file.name)){ statusEl.innerHTML = `<div class="error-msg">« ${file.name} » n'est pas un PDF.</div>`; resetInput(); return; }
+
+  statusEl.innerHTML = `<div class="hint">Analyse du document...</div>`;
+  if(!(await attendrePdfjs())){ statusEl.innerHTML = `<div class="error-msg">pdf.js non chargé (bloqueur de script/pub ? pas de connexion internet ?)</div>`; resetInput(); return; }
+
+  let items;
+  try{ items = await extraireItemsPdf(file); }
+  catch(err){ statusEl.innerHTML = `<div class="error-msg">Lecture du PDF impossible : ${err.message}</div>`; resetInput(); return; }
+
+  const lignes = analyserVentesVendeurPdf(items);
+  if(lignes.length===0){ statusEl.innerHTML = `<div class="error-msg">Aucune ligne reconnue — ce document ne ressemble pas à une synthèse des ventes par vendeur.</div>`; resetInput(); return; }
+
+  VENDEUR_BULK_FILE = file;
+  VENDEUR_BULK_MOIS = mois;
+  VENDEUR_BULK_ROWS = lignes.map(l=>{
+    const magasin = deviverMagasinVendeur(l.magasin);
+    const collab = (l.vendeur!=='(non attribué)' && l.vendeur!=='Soutien') ? deviverCollaborateur(l.vendeur) : null;
+    return { ...l, magasinId: magasin?.id || '', collaborateurId: collab?.id || '' };
+  });
+  statusEl.innerHTML = '';
+  renderVendeurBulkPreview();
+}
+
+function renderVendeurBulkPreview(){
+  const preview = document.getElementById('vendeur-bulk-preview');
+  const nbOk = VENDEUR_BULK_ROWS.filter(r=>r.magasinId).length;
+  preview.innerHTML = `
+    <div class="hint" style="margin:14px 0 10px 0;">${nbOk}/${VENDEUR_BULK_ROWS.length} ligne(s) rattachée(s) à un magasin. Le rattachement au salarié est facultatif (« Soutien » ou une ligne non attribuée restent importés sans salarié précis).</div>
+    <div style="overflow-x:auto;">
+    <table>
+      <thead><tr><th>Magasin (doc.)</th><th>Magasin</th><th>Vendeur (doc.)</th><th>Salarié</th><th>HT</th><th>Nb ventes</th></tr></thead>
+      <tbody>
+        ${VENDEUR_BULK_ROWS.map((r,i)=>`
+          <tr style="${!r.magasinId ? 'background:rgba(220,38,38,.08);' : ''}">
+            <td style="font-size:12.5px;">${r.magasin||'—'}</td>
+            <td>
+              <select class="vb-magasin-select" data-idx="${i}" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;">
+                <option value="">— Choisir —</option>
+                ${STATE.magasins.map(m=>`<option value="${m.id}" ${m.id===r.magasinId?'selected':''}>${m.nom}</option>`).join('')}
+              </select>
+            </td>
+            <td style="font-size:12.5px;">${r.vendeur}</td>
+            <td>
+              <select class="vb-collab-select" data-idx="${i}" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;">
+                <option value="">— Aucun —</option>
+                ${STATE.collaborateurs.map(c=>`<option value="${c.id}" ${c.id===r.collaborateurId?'selected':''}>${c.nom}</option>`).join('')}
+              </select>
+            </td>
+            <td style="text-align:right;">${fmtEUR(r.ht)}</td>
+            <td style="text-align:right;">${r.nbVentes ?? '—'}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+    <div style="margin-top:14px;display:flex;align-items:center;gap:12px;">
+      <button class="btn" id="vendeur-bulk-import-btn">Importer les ${VENDEUR_BULK_ROWS.length} ligne(s)</button>
+      <span id="vendeur-bulk-progress" class="hint"></span>
+    </div>
+  `;
+  preview.querySelectorAll('.vb-magasin-select').forEach(sel=>{
+    sel.addEventListener('change', e=>{ VENDEUR_BULK_ROWS[+e.target.dataset.idx].magasinId = e.target.value; });
+  });
+  preview.querySelectorAll('.vb-collab-select').forEach(sel=>{
+    sel.addEventListener('change', e=>{ VENDEUR_BULK_ROWS[+e.target.dataset.idx].collaborateurId = e.target.value; });
+  });
+  document.getElementById('vendeur-bulk-import-btn').addEventListener('click', runVendeurBulkImport);
+}
+
+async function runVendeurBulkImport(){
+  const btn = document.getElementById('vendeur-bulk-import-btn');
+  const progress = document.getElementById('vendeur-bulk-progress');
+  const rows = VENDEUR_BULK_ROWS.filter(r=>r.magasinId);
+  const skipped = VENDEUR_BULK_ROWS.length - rows.length;
+  if(rows.length===0){ progress.textContent = 'Aucune ligne rattachée à un magasin.'; return; }
+  btn.disabled = true;
+  progress.textContent = 'Envoi du document...';
+
+  const exercice = findExerciceForDate(`${VENDEUR_BULK_MOIS}-01`);
+  if(!exercice){ progress.textContent = `Aucun exercice comptable ne couvre ${VENDEUR_BULK_MOIS}.`; btn.disabled=false; return; }
+
+  const { data: existant } = await sb.from('imports')
+    .select('id').eq('type_import','ventes_vendeur').eq('mois', VENDEUR_BULK_MOIS).maybeSingle();
+  let importId = existant?.id;
+  if(importId){
+    await sb.from('imports').update({ nom_fichier: VENDEUR_BULK_FILE.name }).eq('id', importId);
+  } else {
+    const { data: inserted, error: impErr } = await sb.from('imports').insert({
+      exercice_id: exercice.id, type_import: 'ventes_vendeur', mois: VENDEUR_BULK_MOIS,
+      nom_fichier: VENDEUR_BULK_FILE.name, statut: 'importé'
+    }).select().single();
+    if(impErr){ progress.textContent = 'Erreur : ' + impErr.message; btn.disabled=false; return; }
+    importId = inserted.id;
+  }
+
+  const path = `${VENDEUR_BULK_MOIS}/${Date.now()}_${sanitizeFilename(VENDEUR_BULK_FILE.name)}`;
+  const { error: uploadErr } = await sb.storage.from('ventes-vendeur').upload(path, VENDEUR_BULK_FILE, { upsert:true });
+  if(uploadErr){ progress.textContent = 'Erreur envoi fichier : ' + uploadErr.message; btn.disabled=false; return; }
+  await sb.from('imports').update({ chemin_storage: path }).eq('id', importId);
+
+  let ok = 0, done = 0;
+  for(const r of rows){
+    progress.textContent = `Import en cours... ${done+1}/${rows.length}`;
+    const { error } = await sb.from('ventes_vendeur').upsert({
+      exercice_id: exercice.id, import_id: importId, collaborateur_id: r.collaborateurId || null,
+      magasin_id: r.magasinId, mois: VENDEUR_BULK_MOIS, nom_vendeur_brut: r.vendeur,
+      ht: r.ht, ttc: r.ttc, nb_ventes: r.nbVentes, nb_articles: r.nbArticles,
+      panier_moyen: r.panier, nb_articles_moyen: r.nbArtMoyen
+    }, { onConflict: 'magasin_id,mois,nom_vendeur_brut' });
+    if(!error) ok++;
+    done++;
+  }
+  progress.textContent = `Terminé : ${ok}/${rows.length} ligne(s) importée(s)${skipped?`, ${skipped} ligne(s) ignorée(s) (pas de magasin)`:''}.`;
+  btn.disabled = false;
+  VENDEUR_BULK_ROWS = [];
+  document.getElementById('vendeur-bulk-preview').innerHTML = '';
+  loadVendeurLeaderboard();
+  loadVendeurHistorique();
+}
+
+async function loadVendeurLeaderboard(){
+  const container = document.getElementById('vendeur-leaderboard');
+  if(!container) return;
+  const { data } = await sb.from('ventes_vendeur')
+    .select('*, magasins(nom)')
+    .eq('mois', VENDEUR_MOIS_LEADERBOARD)
+    .order('ht', {ascending:false});
+
+  if(!data || data.length===0){ container.innerHTML = `<div class="empty">Aucune donnée pour ce mois.</div>`; return; }
+
+  container.innerHTML = `
+    <div style="overflow-x:auto;">
+    <table>
+      <thead><tr><th>#</th><th>Vendeur</th><th>Magasin</th><th style="text-align:right;">HT</th><th style="text-align:right;">TTC</th><th style="text-align:right;">Nb ventes</th><th style="text-align:right;">Panier moyen</th></tr></thead>
+      <tbody>
+        ${data.map((r,i)=>`
+          <tr>
+            <td>${i+1}</td>
+            <td>${r.nom_vendeur_brut}</td>
+            <td>${r.magasins?.nom || '—'}</td>
+            <td style="text-align:right;">${fmtEUR(r.ht)}</td>
+            <td style="text-align:right;">${fmtEUR(r.ttc)}</td>
+            <td style="text-align:right;">${r.nb_ventes ?? '—'}</td>
+            <td style="text-align:right;">${r.panier_moyen!=null ? fmtEUR(r.panier_moyen) : '—'}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+  `;
+}
+
+async function loadVendeurHistorique(){
+  const container = document.getElementById('vendeur-historique');
+  if(!container || !VENDEUR_SELECTED_ID) return;
+  const { data } = await sb.from('ventes_vendeur')
+    .select('*, magasins(nom), imports:import_id(chemin_storage)')
+    .eq('collaborateur_id', VENDEUR_SELECTED_ID)
+    .order('mois', {ascending:false});
+
+  if(!data || data.length===0){ container.innerHTML = `<div class="empty">Aucune vente rattachée à ce salarié pour l'instant.</div>`; return; }
+
+  container.innerHTML = `
+    <div style="overflow-x:auto;">
+    <table>
+      <thead><tr><th>Mois</th><th>Magasin</th><th style="text-align:right;">HT</th><th style="text-align:right;">TTC</th><th style="text-align:right;">Nb ventes</th><th style="text-align:right;">Panier moyen</th><th>Document</th></tr></thead>
+      <tbody>
+        ${data.map(r=>{
+          const moisLabel = r.mois ? new Date(r.mois+'-01').toLocaleDateString('fr-FR',{month:'long',year:'numeric'}) : '—';
+          return `
+          <tr>
+            <td style="text-transform:capitalize;">${moisLabel}</td>
+            <td>${r.magasins?.nom || '—'}</td>
+            <td style="text-align:right;">${fmtEUR(r.ht)}</td>
+            <td style="text-align:right;">${fmtEUR(r.ttc)}</td>
+            <td style="text-align:right;">${r.nb_ventes ?? '—'}</td>
+            <td style="text-align:right;">${r.panier_moyen!=null ? fmtEUR(r.panier_moyen) : '—'}</td>
+            <td>${r.imports?.chemin_storage ? `<a href="#" class="voir-doc-link-vendeur" data-path="${r.imports.chemin_storage}" style="color:var(--blue);font-weight:600;text-decoration:none;">📎 Voir</a>` : '—'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>
+  `;
+  container.querySelectorAll('.voir-doc-link-vendeur').forEach(link=>{
+    link.addEventListener('click', (e)=>{ e.preventDefault(); voirDocument('ventes-vendeur', link.dataset.path); });
   });
 }
 
