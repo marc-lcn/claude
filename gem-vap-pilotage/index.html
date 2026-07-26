@@ -3551,7 +3551,7 @@ function renderParametresPage(){
             </div>
             <div class="field"><button class="btn" id="add-regle-btn">Ajouter</button></div>
           </div>
-          <div class="hint" style="margin:14px 0 10px 0;">Triées par catégorie. Renommer, changer la catégorie/l'affectation, ou désactiver un mot-clé ne touche pas aux opérations déjà validées.</div>
+          <div class="hint" style="margin:14px 0 10px 0;">Triées par catégorie. Renommer, changer la catégorie/l'affectation, ou désactiver un mot-clé ne touche pas aux opérations déjà validées — utilisez « Corriger validées » sur une règle pour ça, avec aperçu et confirmation avant tout changement.</div>
           <input type="text" id="regle-search" placeholder="🔎 Rechercher un mot-clé..." style="width:100%;max-width:320px;padding:9px 12px;border:1px solid var(--border);border-radius:9px;font-size:13.5px;margin-bottom:12px;">
           <div class="table-wrap">
             <table>
@@ -3559,6 +3559,7 @@ function renderParametresPage(){
               <tbody id="regle-tbody"><tr><td colspan="6" class="empty">Chargement...</td></tr></tbody>
             </table>
           </div>
+          <div id="regle-correction-panel" style="margin-top:16px;"></div>
         </div>
       </div>
     </div>
@@ -3705,8 +3706,9 @@ function renderReglesTable(recherche){
       </td>
       <td>${r.confiance}%</td>
       <td><span class="badge ${r.actif?'green':'red'}">${r.actif?'Active':'Désactivée'}</span></td>
-      <td>
+      <td style="white-space:normal;">
         <button class="btn secondary small toggle-regle-btn">${r.actif?'Désactiver':'Réactiver'}</button>
+        <button class="btn secondary small corriger-validees-btn" style="margin-left:6px;">Corriger validées</button>
         ${!r.actif ? `<button class="btn secondary small supprimer-regle-btn" style="margin-left:6px;color:#c22b2b;">🗑️</button>` : ''}
       </td>
     </tr>`).join('');
@@ -3741,6 +3743,10 @@ function renderReglesTable(recherche){
       loadReglesAdmin();
       enregistrerAudit('modification_regle', { tableConcernee: 'regles_categorisation', elementId: id, resume: `Règle "${tr.querySelector('.rename-regle-input').value}" ${!current.actif?'activée':'désactivée'}` });
     });
+    tr.querySelector('.corriger-validees-btn').addEventListener('click', (e)=>{
+      const regle = REGLES_CACHE.regles.find(r=>r.id===id);
+      if(regle) lancerCorrectionValidees(regle, e.target);
+    });
     const supprimerBtn = tr.querySelector('.supprimer-regle-btn');
     if(supprimerBtn){
       supprimerBtn.addEventListener('click', async ()=>{
@@ -3753,6 +3759,143 @@ function renderReglesTable(recherche){
         enregistrerAudit('suppression_regle', { tableConcernee: 'regles_categorisation', elementId: id, resume: `Règle supprimée : "${motCleSupprime}"` });
       });
     }
+  });
+}
+
+// Recherche les opérations DÉJÀ VALIDÉES dont le libellé contient le mot-clé
+// de "regle", puis recalcule pour chacune la meilleure règle active
+// (trouverMeilleureRegle, même logique que l'import et que "Relire les
+// opérations non validées") : seules celles dont la catégorie ou
+// l'affectation actuelle diffère du résultat recalculé sont proposées à la
+// correction. Ne modifie jamais rien elle-même — uniquement une analyse en
+// lecture, l'écriture n'a lieu qu'après confirmation explicite (voir
+// lancerCorrectionValidees).
+async function analyserCorrectionOperationsValidees(regle){
+  const { data: reglesActivesData, error: errRegles } = await sb.from('regles_categorisation').select('*').eq('actif', true);
+  if(errRegles) throw new Error('Impossible de charger les règles actives : ' + errRegles.message);
+  const reglesActives = reglesActivesData || [];
+
+  const { data: opsData, error: errOps } = await sb.from('operations_bancaires')
+    .select('id, date_operation, libelle, debit, credit, categorie_finale_id, affectation')
+    .eq('etat', 'valide_manuel')
+    .ilike('libelle', `%${regle.mot_cle}%`);
+  if(errOps) throw new Error('Impossible de rechercher les opérations validées : ' + errOps.message);
+
+  const toutesCategories = await chargerToutesCategories();
+  const catMap = new Map(toutesCategories.map(c=>[c.id, c.libelle]));
+
+  const aCorriger = [];
+  (opsData||[]).forEach(op=>{
+    const meilleure = trouverMeilleureRegle(op.libelle, reglesActives);
+    if(!meilleure) return;
+    const nouvelleAffectation = meilleure.affectation || 'COMMUN';
+    const affectationActuelle = op.affectation || 'COMMUN';
+    if(meilleure.categorie_id === op.categorie_finale_id && nouvelleAffectation === affectationActuelle) return;
+    aCorriger.push({
+      id: op.id,
+      date: op.date_operation,
+      libelle: op.libelle,
+      montant: op.debit || op.credit || 0,
+      categorieActuelle: catMap.get(op.categorie_finale_id) || 'Sans catégorie',
+      nouvelleCategorie: catMap.get(meilleure.categorie_id) || 'Sans catégorie',
+      affectationActuelle,
+      nouvelleAffectation,
+      motCle: meilleure.mot_cle,
+      categorieId: meilleure.categorie_id,
+      confiance: meilleure.confiance
+    });
+  });
+  return aCorriger;
+}
+
+// Affiche l'aperçu de correction (jamais d'écriture avant confirmation
+// explicite), puis applique les corrections une par une en journalisant
+// chacune comme une modification d'opération déjà validée (même mécanisme
+// que la correction manuelle d'une ligne, pour rester traçable).
+async function lancerCorrectionValidees(regle, btn){
+  const panel = document.getElementById('regle-correction-panel');
+  if(!panel) return;
+  if(btn) btn.disabled = true;
+  panel.innerHTML = `<div class="empty empty-loading">Recherche des opérations déjà validées concernées par "${escapeHTML(regle.mot_cle)}"...</div>`;
+
+  let aCorriger;
+  try{
+    aCorriger = await analyserCorrectionOperationsValidees(regle);
+  } catch(err){
+    panel.innerHTML = `<div class="empty">${escapeHTML(err.message)}</div>`;
+    if(btn) btn.disabled = false;
+    return;
+  }
+  if(btn) btn.disabled = false;
+
+  if(aCorriger.length===0){
+    panel.innerHTML = `<div class="card"><div class="hint">Aucune opération déjà validée à corriger pour "${escapeHTML(regle.mot_cle)}" : soit aucune ne correspond, soit elles sont déjà catégorisées correctement selon les règles actives.</div></div>`;
+    return;
+  }
+
+  panel.innerHTML = `
+    <div class="card">
+      <h3 style="margin-bottom:10px;">Corriger ${aCorriger.length} opération(s) déjà validée(s)</h3>
+      <div class="hint" style="margin-bottom:12px;">Ces opérations sont déjà validées, mais leur catégorie ou affectation actuelle ne correspond plus au mot-clé le plus pertinent parmi les règles actives. Vérifiez la liste avant de confirmer — chaque correction sera journalisée et restera consultable dans le Journal d'activité.</div>
+      <div class="table-wrap" style="max-height:320px;overflow-y:auto;">
+        <table>
+          <thead><tr><th>Date</th><th>Libellé</th><th>Montant</th><th>Catégorie actuelle</th><th>Nouvelle catégorie</th></tr></thead>
+          <tbody>
+            ${aCorriger.map(c=>`
+              <tr>
+                <td>${fmtDate(c.date)}</td>
+                <td style="max-width:220px;white-space:normal;">${escapeHTML(c.libelle)}</td>
+                <td>${fmtEUR(c.montant)}</td>
+                <td>${escapeHTML(c.categorieActuelle)} <span class="hint">(${escapeHTML(c.affectationActuelle)})</span></td>
+                <td><b>${escapeHTML(c.nouvelleCategorie)}</b> <span class="hint">(${escapeHTML(c.nouvelleAffectation)})</span></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
+        <button class="btn-primary" id="confirmer-correction-validees-btn">Confirmer la correction (${aCorriger.length})</button>
+        <button class="btn secondary" id="annuler-correction-validees-btn">Annuler</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('annuler-correction-validees-btn').addEventListener('click', ()=>{ panel.innerHTML=''; });
+  document.getElementById('confirmer-correction-validees-btn').addEventListener('click', async ()=>{
+    if(!confirm(`Confirmer la correction de ${aCorriger.length} opération(s) déjà validée(s) ? Chaque correction sera journalisée.`)) return;
+    const confirmBtn = document.getElementById('confirmer-correction-validees-btn');
+    const annulerBtn = document.getElementById('annuler-correction-validees-btn');
+    confirmBtn.disabled = true;
+    if(annulerBtn) annulerBtn.disabled = true;
+    confirmBtn.textContent = 'Correction en cours...';
+
+    let corrigees = 0, echecs = 0;
+    for(const c of aCorriger){
+      const { error } = await sb.from('operations_bancaires').update({
+        categorie_finale_id: c.categorieId,
+        affectation: c.nouvelleAffectation,
+        mot_cle_reconnu: c.motCle,
+        confiance: c.confiance
+      }).eq('id', c.id);
+      if(error){ echecs++; console.error('Erreur correction opération validée :', c.id, error); continue; }
+      corrigees++;
+      enregistrerAudit('modification_operation_validee', {
+        tableConcernee: 'operations_bancaires',
+        elementId: c.id,
+        resume: `Correction rétroactive d'une opération déjà validée : "${c.libelle}" — catégorie ${c.categorieActuelle} → ${c.nouvelleCategorie}`,
+        details: {
+          ancienne_categorie: c.categorieActuelle, nouvelle_categorie: c.nouvelleCategorie,
+          ancienne_affectation: c.affectationActuelle, nouvelle_affectation: c.nouvelleAffectation
+        },
+        gravite: 'avertissement'
+      });
+    }
+
+    panel.innerHTML = `
+      <div class="card">
+        <h3>${echecs===0 ? 'Correction terminée' : 'Correction terminée avec des erreurs'}</h3>
+        <div class="hint" style="margin-top:6px;">${corrigees} opération(s) corrigée(s)${echecs>0 ? `, ${echecs} en erreur` : ''}.</div>
+      </div>`;
+    toast(echecs===0 ? `${corrigees} opération(s) corrigée(s) ✔` : `${corrigees} corrigée(s), ${echecs} en erreur`);
   });
 }
 
