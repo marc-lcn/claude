@@ -3,13 +3,13 @@
 // fichiers pré-cachés change (comme ici, avec l'ajout de version.json).
 // La fraîcheur du contenu est déjà garantie par la stratégie "réseau
 // d'abord" ci-dessous ; ce cache n'est qu'un secours hors-ligne.
-const CACHE_NAME = 'gemvap-pilotage-v3';
+const CACHE_NAME = 'gemvap-pilotage-v4';
 const FILES_TO_CACHE = [
   '/index.html',
   '/manifest.json',
   '/version.json',
-  '/icon-192.png',
-  '/icon-512.png'
+  '/icon-192-jethro.png',
+  '/icon-512-jethro.png'
 ];
 
 self.addEventListener('install', (event) => {

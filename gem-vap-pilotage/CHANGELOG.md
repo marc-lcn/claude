@@ -1,4 +1,4 @@
-# Changelog — GEM.VAP Pilotage
+# Changelog — Jéthro
 
 Toutes les évolutions notables de l'application sont listées ici, de la plus récente à la plus ancienne.
 
@@ -9,6 +9,28 @@ Ce fichier suit une convention simple :
 - **MAJEURE** : évolution structurante ou rupture de compatibilité.
 
 La version affichée dans l'application (section "À propos") et le numéro utilisé pour la détection des mises à jour proviennent uniquement de `version.json` — ce fichier ne fait que documenter, en langage clair, ce que chaque version a changé.
+
+---
+
+## [1.2.0] — 2026-07-26
+
+L'application s'appelle désormais **Jéthro**. GEM.VAP reste bien sûr l'entreprise pilotée par l'application — seul le nom du logiciel change.
+
+### Identité
+- Nouveau nom, nouveau logo (symbole, sans lien avec le nom d'origine), nouvelles icônes PWA.
+- Signature : « Jéthro — Le conseil du dirigeant ».
+
+### Tableau de bord
+- Refonte complète du tableau de bord en véritable cockpit : ce qu'il faut savoir ou faire aujourd'hui, en un coup d'œil.
+- Chiffres clés du mois (CA HT, tickets, panier moyen, opérations à contrôler), avec accès direct aux pages concernées.
+- Performance par magasin (Pau, Ibos, Tarbes, Internet) sous forme d'onglets.
+- Comparaisons avec les jours réellement comparables de l'historique (même jour de semaine, mois précédent et année précédente), affichées uniquement quand elles sont fiables — jamais de comparaison approximative présentée comme certaine.
+- Cumul du mois en cours comparé aux mêmes périodes des mois de référence.
+- Résumé intelligent : quelques phrases en langage courant plutôt qu'une accumulation de chiffres.
+- Mini-graphiques discrets (tendance du CA, répartition par magasin), sans bibliothèque externe.
+
+### Divers
+- Poursuite du même mécanisme de mise à jour de la PWA introduit en 1.0.0.
 
 ---
 

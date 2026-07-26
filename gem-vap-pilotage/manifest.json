@@ -1,7 +1,7 @@
 {
-  "name": "GEM.VAP Pilotage",
-  "short_name": "GEM.VAP",
-  "description": "Pilotage financier de GEM.VAP - Pau, Ibos, Tarbes, Internet",
+  "name": "Jéthro",
+  "short_name": "Jéthro",
+  "description": "Jéthro, le conseil du dirigeant — pilotage financier de GEM.VAP (Pau, Ibos, Tarbes, Internet)",
   "start_url": "/index.html",
   "scope": "/",
   "display": "standalone",
@@ -9,7 +9,7 @@
   "theme_color": "#11153a",
   "orientation": "portrait-primary",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/icon-192-jethro.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512-jethro.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

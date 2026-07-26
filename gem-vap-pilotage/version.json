@@ -1,11 +1,11 @@
 {
-  "version": "1.0.0",
-  "date": "2026-07-25",
+  "version": "1.2.0",
+  "date": "2026-07-26",
   "environment": "production",
   "highlights": [
-    "Sécurisation des accès aux profils utilisateurs",
-    "Protection contre les failles XSS",
-    "Import bancaire fiabilisé, sans doublons",
-    "Journal d'audit des actions importantes"
+    "Nouvelle identité : l'application s'appelle désormais Jéthro",
+    "Nouveau tableau de bord : un vrai cockpit du dirigeant",
+    "Comparaisons fiables avec l'historique (mois précédent, année précédente)",
+    "Résumé intelligent en langage naturel chaque jour"
   ]
 }

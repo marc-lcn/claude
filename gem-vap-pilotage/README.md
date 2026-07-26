@@ -1,6 +1,8 @@
-# GEM.VAP Pilotage
+# Jéthro
 
-Application de pilotage financier pour la chaîne de boutiques GEM.VAP (Pau, Ibos, Tarbes, Internet) : saisie du chiffre d'affaires, import et catégorisation des relevés bancaires, suivi des salariés et de leurs bulletins de paie, suivi des ventes par vendeur, analyse par magasin, et journal d'audit des actions importantes.
+**Jéthro** est l'application de pilotage financier de **GEM.VAP**, la chaîne de boutiques (Pau, Ibos, Tarbes, Internet) qu'elle sert au quotidien : saisie du chiffre d'affaires, import et catégorisation des relevés bancaires, suivi des salariés et de leurs bulletins de paie, suivi des ventes par vendeur, analyse par magasin, tableau de bord et journal d'audit des actions importantes.
+
+« Jéthro » est le nom du logiciel ; « GEM.VAP » reste le nom de l'entreprise qui l'utilise — les deux ne se confondent pas.
 
 C'est une **Progressive Web App (PWA)** : elle s'utilise dans un navigateur classique, ou peut être installée sur téléphone/ordinateur pour un accès en un clic, sans passer par un store d'applications.
 
@@ -15,7 +17,7 @@ L'application est volontairement simple : **pas de framework, pas d'étape de bu
 | `index.html` | L'application entière : structure, style et logique JavaScript, dans un seul fichier. |
 | `manifest.json` | Déclaration PWA (nom, icônes, couleurs, mode d'affichage). |
 | `sw.js` | Service worker : mise en cache pour un fonctionnement dégradé hors-ligne, stratégie "réseau d'abord". |
-| `icon-192.png`, `icon-512.png` | Icônes de l'application installée. |
+| `icon-192-jethro.png`, `icon-512-jethro.png` | Icônes de l'application installée. |
 | `VERSION` | Miroir texte du numéro de version courant, pour référence humaine (voir plus bas — **n'est jamais lu par l'application**). |
 | `version.json` | Source unique lue par l'application pour afficher la version et détecter une mise à jour (voir plus bas). |
 | `CHANGELOG.md` | Historique des évolutions, version par version. |

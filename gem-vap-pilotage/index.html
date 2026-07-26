@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>GEM.VAP Pilotage</title>
+<title>Jéthro</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#11153a">
-<link rel="icon" href="/icon-192.png">
-<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="icon" href="/icon-192-jethro.png">
+<link rel="apple-touch-icon" href="/icon-192-jethro.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -57,7 +57,10 @@ input,select,textarea{font-family:inherit;}
 /* ---------- LOGIN ---------- */
 #login-view{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--navy),var(--navy-light));}
 .login-card{background:var(--card);padding:40px 36px;border-radius:20px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,.3);}
-.login-logo{font-size:26px;font-weight:800;margin-bottom:4px;background:linear-gradient(90deg,var(--blue),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent;}
+.login-logo{display:flex;align-items:center;gap:10px;margin-bottom:2px;}
+.login-logo svg{width:34px;height:34px;flex-shrink:0;}
+.login-logo span{font-size:26px;font-weight:800;background:linear-gradient(90deg,var(--blue),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent;}
+.login-signature{color:var(--muted);font-size:12.5px;font-style:italic;margin-bottom:18px;}
 .login-sub{color:var(--muted);font-size:14px;margin-bottom:24px;}
 .field{margin-bottom:16px;}
 .field label{display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text);}
@@ -72,8 +75,9 @@ input,select,textarea{font-family:inherit;}
 #app-view{display:none;min-height:100vh;}
 .shell{display:flex;min-height:100vh;}
 .sidebar{width:230px;background:var(--navy);color:#cfd3ea;flex-shrink:0;padding:calc(20px + env(safe-area-inset-top)) 14px calc(20px + env(safe-area-inset-bottom)) 14px;display:flex;flex-direction:column;position:relative;}
-.sidebar-logo{font-size:19px;font-weight:800;color:#fff;padding:6px 10px 22px 10px;}
-.sidebar-logo span{background:linear-gradient(90deg,var(--blue),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent;}
+.sidebar-logo{display:flex;align-items:center;gap:9px;padding:6px 10px 22px 10px;}
+.sidebar-logo svg{width:26px;height:26px;flex-shrink:0;}
+.sidebar-logo span{font-size:18px;font-weight:800;background:linear-gradient(90deg,var(--blue),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent;}
 .nav-item{display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:var(--radius-sm);margin-bottom:3px;font-size:14px;font-weight:600;color:#b7bbdc;text-decoration:none;background:none;border:none;width:100%;text-align:left;transition:background-color .15s var(--ease),color .15s var(--ease);}
 .nav-item .icon{opacity:.85;}
 .nav-item:hover{background:var(--navy-light);color:#fff;}
@@ -147,6 +151,46 @@ body.menu-open{overflow:hidden;}
 
 .section-title{font-size:15px;font-weight:700;margin:28px 0 12px 0;}
 
+/* ---------- TABLEAU DE BORD (Lot G — cockpit) ---------- */
+.dashboard-exercice{font-size:12.5px;color:var(--muted);margin-bottom:16px;}
+
+.resume-intelligent{background:linear-gradient(135deg,#eef2ff,#fdf1f8);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;margin-bottom:22px;}
+.resume-intelligent-title{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:8px;}
+.resume-intelligent ul{margin:0;padding-left:18px;}
+.resume-intelligent li{font-size:14.5px;line-height:1.7;color:var(--text);}
+
+.actions-rapides{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px;}
+.action-rapide-btn{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:13px;font-weight:700;color:var(--navy);min-height:44px;transition:border-color .15s var(--ease),box-shadow .15s var(--ease);}
+.action-rapide-btn .icon{color:var(--blue);}
+@media(hover:hover){.action-rapide-btn:hover{border-color:var(--blue);box-shadow:var(--shadow-sm);}}
+
+.sparkline{display:block;overflow:visible;}
+
+.repartition-bar{margin-bottom:14px;}
+.repartition-bar:last-child{margin-bottom:0;}
+.repartition-bar-label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;}
+.repartition-bar-label b{font-weight:700;}
+.repartition-bar-label span{color:var(--muted);}
+.repartition-bar-track{height:8px;border-radius:4px;background:var(--bg);overflow:hidden;}
+.repartition-bar-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--blue),var(--pink));}
+
+.comparaison-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:14px;}
+@media(max-width:820px){.comparaison-grid{grid-template-columns:1fr;gap:10px;}}
+.comparaison-bloc-titre{font-size:12.5px;font-weight:700;color:var(--muted);margin-bottom:10px;}
+.comparaison-ligne{padding:10px 0;border-bottom:1px solid var(--border);}
+.comparaison-ligne:last-child{border-bottom:none;}
+.comparaison-ligne-label{font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:3px;}
+.comparaison-ligne-valeur{font-size:19px;font-weight:800;}
+.comparaison-ligne-delta{display:flex;align-items:baseline;gap:6px;margin-top:2px;}
+.delta-pct{font-size:15px;font-weight:800;}
+.delta-eur{font-size:12px;color:var(--muted);}
+.delta-positif .delta-pct{color:var(--green-text);}
+.delta-negatif .delta-pct{color:var(--red-text);}
+.reference-ligne{padding:10px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:baseline;}
+.reference-ligne:last-child{border-bottom:none;}
+.reference-ligne-label{font-size:12.5px;color:var(--muted);font-weight:600;}
+.reference-ligne-valeur{font-size:15px;font-weight:700;}
+
 /* ---------- FORMS ---------- */
 .form-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:end;}
 @media(max-width:820px){.form-row{grid-template-columns:1fr 1fr;gap:14px;}}
@@ -206,21 +250,6 @@ tr.ligne-fermee td{color:var(--muted);}
 tr.ligne-fermee input[type="number"]{background:#e5e7f0;}
 
 .pill-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;}
-.checklist-item{display:flex;align-items:flex-start;gap:12px;padding:12px 4px;border-bottom:1px solid var(--border);}
-.checklist-item:last-child{border-bottom:none;}
-.checklist-icon{line-height:1.4;display:inline-flex;}
-.checklist-icon .icon{width:19px;height:19px;}
-.checklist-icon.ok .icon{color:var(--green-text);}
-.checklist-icon.warn .icon{color:var(--orange-text);}
-.checklist-icon.pending .icon{color:var(--muted);}
-.checklist-label{font-weight:700;font-size:13.5px;}
-.checklist-detail{font-size:12.5px;color:var(--muted);margin-top:2px;}
-@media(max-width:520px){
-  .checklist-item{padding:10px 2px;gap:9px;}
-  .checklist-icon .icon{width:17px;height:17px;}
-  .checklist-label{font-size:13px;}
-  .checklist-detail{font-size:11.5px;}
-}
 .param-toggle{width:100%;text-align:left;background:none;border:none;font-weight:700;font-size:15px;cursor:pointer;color:var(--text);display:flex;justify-content:space-between;align-items:center;padding:16px 20px;transition:background-color .15s var(--ease);}
 .param-toggle:hover{background:#f7f8fc;}
 .mois-content::-webkit-scrollbar{height:10px;}
@@ -247,7 +276,8 @@ tr.ligne-fermee input[type="number"]{background:#e5e7f0;}
 <!-- ================= LOGIN ================= -->
 <div id="login-view">
   <div class="login-card">
-    <div class="login-logo">GEM.VAP <span>Pilotage</span></div>
+    <div class="login-logo" id="login-logo"></div>
+    <div class="login-signature">Le conseil du dirigeant</div>
     <div class="login-sub">Connexion réservée au dirigeant</div>
     <div id="login-error"></div>
     <form id="login-form">
@@ -273,7 +303,7 @@ tr.ligne-fermee input[type="number"]{background:#e5e7f0;}
   <div class="shell">
     <aside class="sidebar" id="sidebar">
       <button class="sidebar-close" id="sidebar-close-btn" aria-label="Fermer le menu"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-      <div class="sidebar-logo">GEM.VAP <span>Pilotage</span></div>
+      <div class="sidebar-logo" id="sidebar-logo"></div>
       <button class="nav-item active" data-page="dashboard"></button>
       <button class="nav-item" data-page="ca"></button>
       <button class="nav-item" data-page="banque"></button>
@@ -353,6 +383,32 @@ const ICON_PATHS = {
 function icon(nom, classe){
   return `<svg class="icon${classe?' '+classe:''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[nom]||''}</svg>`;
 }
+
+/* ============================================================
+   LOGO JÉTHRO — symbole "constellation" dédié (distinct du système
+   ICON_PATHS/icon() ci-dessus, car multicolore avec dégradé de bleus,
+   là où les icônes fonctionnelles restent monochromes "currentColor").
+   Fonction pure, sans aucune donnée externe/Supabase en entrée — les deux
+   variantes de couleur ne servent qu'à garder un contraste correct selon
+   le fond (sombre en barre latérale, clair sur l'écran de connexion).
+   ============================================================ */
+function logoJethro(variante){
+  const traits = variante === 'clair'
+    ? ['#123a9e','#3f7bff','#8fb3ff']
+    : ['#5b8dff','#7ba0ff','#a9c9ff'];
+  return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+    <circle cx="15.4" cy="12.6" r="4.6" fill="#ff3ea5" opacity=".22"/>
+    <path d="M15.4 12.6 Q9.5 8.2 4.6 5.4" stroke="${traits[0]}" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M15.4 12.6 Q8.3 14.6 3.4 16.6" stroke="${traits[1]}" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M15.4 12.6 Q13.4 17.8 11.8 21.6" stroke="${traits[2]}" stroke-width="2.2" stroke-linecap="round"/>
+    <circle cx="4.6" cy="5.4" r="2.5" fill="${traits[0]}"/>
+    <circle cx="3.4" cy="16.6" r="1.9" fill="${traits[1]}"/>
+    <circle cx="11.8" cy="21.6" r="1.4" fill="${traits[2]}"/>
+    <circle cx="15.4" cy="12.6" r="3.1" fill="#ff3ea5"/>
+  </svg>`;
+}
+document.getElementById('login-logo').innerHTML = `${logoJethro('clair')}<span>Jéthro</span>`;
+document.getElementById('sidebar-logo').innerHTML = `${logoJethro('sombre')}<span>Jéthro</span>`;
 
 function fmtEUR(n){
   if(n === null || n === undefined || isNaN(n)) return '—';
@@ -593,8 +649,316 @@ function renderPage(){
 }
 
 /* ============================================================
-   PAGE : TABLEAU DE BORD
+   PAGE : TABLEAU DE BORD — cockpit du dirigeant (Lot G)
+
+   Principe directeur : une comparaison n'est affichée que si elle est
+   fiable (jour "commercialement comparable" réellement trouvé — voir
+   trouverJourComparable) ; sinon le bloc concerné disparaît plutôt que
+   d'afficher une information approximative.
    ============================================================ */
+let DASHBOARD_TAB = 'ENTREPRISE';
+let DASHBOARD_ENTITES = null;
+
+// Décale une date ISO ('YYYY-MM-DD') d'un nombre de jours (positif ou négatif),
+// en restant en heure locale (voir toLocalISODate).
+function decalerDate(dateStr, jours){
+  const d = new Date(dateStr+'T00:00:00');
+  d.setDate(d.getDate()+jours);
+  return toLocalISODate(d);
+}
+
+// Cherche le jour "commercialement comparable" le plus proche d'une date, pour
+// un magasin donné : même jour de semaine (garanti par construction, puisqu'on
+// décale uniquement par multiples de 7 jours — aucune vérification de jour de
+// semaine n'est donc nécessaire), à la cible demandée (semaineCible=4 pour
+// "le mois dernier", 52 pour "l'an dernier"), avec repli sur ±2 semaines si ce
+// jour précis est fermé ou n'a pas de CA saisi. Choix assumé (simplicité,
+// robustesse) au lieu d'une logique de rang-dans-le-mois/jours fériés : si
+// aucun jour fiable n'est trouvé dans cette marge, retourne null — pas de
+// comparaison plutôt qu'une comparaison approximative.
+function trouverJourComparable(dateStr, magasinId, semaineCible, mapDonnees){
+  const essais = [0,-1,1,-2,2].map(ecart => semaineCible+ecart);
+  for(const semaines of essais){
+    const dateCandidate = decalerDate(dateStr, -semaines*7);
+    const row = mapDonnees[`${magasinId}_${dateCandidate}`];
+    if(row && !row.ferme && row.ca_ht !== null) return { date: dateCandidate, row };
+  }
+  return null;
+}
+
+// Calcule les écarts (€ et %) entre une valeur actuelle et une référence, pour
+// le CA, les tickets et le panier moyen. Retourne null pour un % non calculable
+// (référence nulle ou absente) plutôt qu'une division par zéro déguisée.
+function calculerDeltas(actuelCa, actuelTickets, refCa, refTickets){
+  const panierActuel = actuelTickets>0 ? actuelCa/actuelTickets : null;
+  const panierRef = refTickets>0 ? refCa/refTickets : null;
+  const pct = (a,r) => (r>0) ? ((a-r)/r*100) : null;
+  return {
+    caEur: actuelCa-refCa, caPct: pct(actuelCa, refCa),
+    ticketsDiff: actuelTickets-refTickets, ticketsPct: pct(actuelTickets, refTickets),
+    panierEur: (panierActuel!=null && panierRef!=null) ? panierActuel-panierRef : null,
+    panierPct: panierActuel!=null ? pct(panierActuel, panierRef) : null
+  };
+}
+
+// Construit, pour un magasin, l'ensemble des données du cockpit : cumul du
+// mois en cours, référence du jour (N-1/M-1) et, si le CA du jour a déjà été
+// saisi, la comparaison automatique du jour (6ter) — sinon seule la référence
+// est renvoyée (6bis). Le cumul comparé (6quater) n'est renvoyé que si un jour
+// comparable fiable a été trouvé pour CHAQUE jour déjà saisi ce mois-ci :
+// choix assumé (ni seuil de pourcentage, ni jugement au cas par cas complexe)
+// pour ne jamais présenter un cumul partiellement comparable comme complet.
+function construireEntitePerformance(magasin, dateAujourdhui, joursDuMois, mapActuel, mapM1, mapN1){
+  const cle = (m,d) => `${m}_${d}`;
+  const panier = (ca,tix) => tix>0 ? ca/tix : null;
+
+  let caCumule=0, ticketsCumule=0, joursComptesCumul=0;
+  let caCumuleM1=0, ticketsCumuleM1=0, joursTrouvesM1=0;
+  let caCumuleN1=0, ticketsCumuleN1=0, joursTrouvesN1=0;
+
+  joursDuMois.forEach(dateStr=>{
+    const rowActuel = mapActuel[cle(magasin.id, dateStr)];
+    if(!rowActuel || rowActuel.ca_ht === null) return;
+    caCumule += Number(rowActuel.ca_ht||0);
+    ticketsCumule += Number(rowActuel.nb_tickets||0);
+    joursComptesCumul++;
+    const m1 = trouverJourComparable(dateStr, magasin.id, 4, mapM1);
+    if(m1){ caCumuleM1 += Number(m1.row.ca_ht||0); ticketsCumuleM1 += Number(m1.row.nb_tickets||0); joursTrouvesM1++; }
+    const n1 = trouverJourComparable(dateStr, magasin.id, 52, mapN1);
+    if(n1){ caCumuleN1 += Number(n1.row.ca_ht||0); ticketsCumuleN1 += Number(n1.row.nb_tickets||0); joursTrouvesN1++; }
+  });
+  const cumulFiableM1 = joursComptesCumul>0 && joursTrouvesM1 === joursComptesCumul;
+  const cumulFiableN1 = joursComptesCumul>0 && joursTrouvesN1 === joursComptesCumul;
+
+  const rowAujourdhui = mapActuel[cle(magasin.id, dateAujourdhui)];
+  const aujourdhui = (rowAujourdhui && rowAujourdhui.ca_ht !== null)
+    ? { ca:Number(rowAujourdhui.ca_ht||0), tickets:Number(rowAujourdhui.nb_tickets||0), panier: panier(Number(rowAujourdhui.ca_ht||0), Number(rowAujourdhui.nb_tickets||0)) }
+    : null;
+  const trouveM1 = trouverJourComparable(dateAujourdhui, magasin.id, 4, mapM1);
+  const trouveN1 = trouverJourComparable(dateAujourdhui, magasin.id, 52, mapN1);
+  const refM1 = trouveM1 ? { date: trouveM1.date, ca:Number(trouveM1.row.ca_ht||0), tickets:Number(trouveM1.row.nb_tickets||0), panier: panier(Number(trouveM1.row.ca_ht||0), Number(trouveM1.row.nb_tickets||0)) } : null;
+  const refN1 = trouveN1 ? { date: trouveN1.date, ca:Number(trouveN1.row.ca_ht||0), tickets:Number(trouveN1.row.nb_tickets||0), panier: panier(Number(trouveN1.row.ca_ht||0), Number(trouveN1.row.nb_tickets||0)) } : null;
+
+  return {
+    code: magasin.code, nom: magasin.nom,
+    caMois: caCumule, ticketsMois: ticketsCumule, panierMoyenMois: panier(caCumule, ticketsCumule),
+    aujourdhui, refM1, refN1,
+    deltaM1: (aujourdhui && refM1) ? calculerDeltas(aujourdhui.ca, aujourdhui.tickets, refM1.ca, refM1.tickets) : null,
+    deltaN1: (aujourdhui && refN1) ? calculerDeltas(aujourdhui.ca, aujourdhui.tickets, refN1.ca, refN1.tickets) : null,
+    cumul: {
+      ca: caCumule, tickets: ticketsCumule, panier: panier(caCumule, ticketsCumule), jours: joursComptesCumul,
+      m1: cumulFiableM1 ? { ca:caCumuleM1, tickets:ticketsCumuleM1, panier: panier(caCumuleM1,ticketsCumuleM1) } : null,
+      n1: cumulFiableN1 ? { ca:caCumuleN1, tickets:ticketsCumuleN1, panier: panier(caCumuleN1,ticketsCumuleN1) } : null,
+      deltaM1Cumul: cumulFiableM1 ? calculerDeltas(caCumule, ticketsCumule, caCumuleM1, ticketsCumuleM1) : null,
+      deltaN1Cumul: cumulFiableN1 ? calculerDeltas(caCumule, ticketsCumule, caCumuleN1, ticketsCumuleN1) : null
+    }
+  };
+}
+
+// Agrège les 4 entités (Pau/Ibos/Tarbes/Internet) en un total "Toute
+// l'entreprise". Une comparaison au niveau entreprise n'est renvoyée que si
+// TOUS les magasins ont individuellement une comparaison fiable pour cette
+// période — sinon le total mélangerait des périodes différentes selon les
+// magasins, ce qui serait trompeur.
+function fusionnerEntreprise(entites){
+  const somme = (sel) => entites.reduce((s,e)=>s+(sel(e)||0),0);
+  const tousOnt = (sel) => entites.every(e=>sel(e));
+  const panier = (ca,tix) => tix>0 ? ca/tix : null;
+  const totalPaire = (sel) => { const ca=somme(e=>sel(e).ca), tickets=somme(e=>sel(e).tickets); return {ca, tickets, panier: panier(ca,tickets)}; };
+
+  const caMois = somme(e=>e.caMois), ticketsMois = somme(e=>e.ticketsMois);
+  const aujourdhui = tousOnt(e=>e.aujourdhui) ? totalPaire(e=>e.aujourdhui) : null;
+  const refM1 = tousOnt(e=>e.refM1) ? totalPaire(e=>e.refM1) : null;
+  const refN1 = tousOnt(e=>e.refN1) ? totalPaire(e=>e.refN1) : null;
+  const cumulM1 = tousOnt(e=>e.cumul.m1) ? totalPaire(e=>e.cumul.m1) : null;
+  const cumulN1 = tousOnt(e=>e.cumul.n1) ? totalPaire(e=>e.cumul.n1) : null;
+  const cumulCa = somme(e=>e.cumul.ca), cumulTickets = somme(e=>e.cumul.tickets);
+
+  return {
+    code: 'ENTREPRISE', nom: 'Toute l’entreprise',
+    caMois, ticketsMois, panierMoyenMois: panier(caMois, ticketsMois),
+    aujourdhui, refM1, refN1,
+    deltaM1: (aujourdhui && refM1) ? calculerDeltas(aujourdhui.ca, aujourdhui.tickets, refM1.ca, refM1.tickets) : null,
+    deltaN1: (aujourdhui && refN1) ? calculerDeltas(aujourdhui.ca, aujourdhui.tickets, refN1.ca, refN1.tickets) : null,
+    cumul: {
+      ca: cumulCa, tickets: cumulTickets, panier: panier(cumulCa, cumulTickets), jours: entites[0]?.cumul?.jours || 0,
+      m1: cumulM1, n1: cumulN1,
+      deltaM1Cumul: cumulM1 ? calculerDeltas(cumulCa, cumulTickets, cumulM1.ca, cumulM1.tickets) : null,
+      deltaN1Cumul: cumulN1 ? calculerDeltas(cumulCa, cumulTickets, cumulN1.ca, cumulN1.tickets) : null
+    }
+  };
+}
+
+// Génère quelques phrases en langage naturel à partir des comparaisons déjà
+// jugées fiables. SEUIL_NOTABLE_PCT n'est PAS un seuil de fiabilité (celle-ci
+// vient uniquement de trouverJourComparable) : c'est un seuil purement
+// éditorial pour juger qu'une évolution mérite d'être commentée en phrase.
+function genererResumeIntelligent(entitesMagasins, aControlerCount, releveImporte, moisPrecedentLabel){
+  const SEUIL_NOTABLE_PCT = 3;
+  const phrases = [];
+  entitesMagasins
+    .filter(e => e.deltaN1 && e.deltaN1.caPct !== null && Math.abs(e.deltaN1.caPct) >= SEUIL_NOTABLE_PCT)
+    .sort((a,b)=> Math.abs(b.deltaN1.caPct) - Math.abs(a.deltaN1.caPct))
+    .slice(0,3)
+    .forEach(e=>{
+      const pct = Math.abs(e.deltaN1.caPct).toFixed(1).replace('.',',');
+      phrases.push(e.deltaN1.caPct >= 0
+        ? `${e.nom} progresse de ${pct} % par rapport à l'an dernier (même jour).`
+        : `${e.nom} est en baisse de ${pct} % par rapport à l'an dernier (même jour).`);
+    });
+  if((aControlerCount||0) > 0){
+    phrases.push(`${aControlerCount} opération${aControlerCount>1?'s':''} ${aControlerCount>1?'restent':'reste'} à contrôler.`);
+  }
+  phrases.push(releveImporte
+    ? `Le relevé bancaire de ${moisPrecedentLabel} est importé.`
+    : `Le relevé bancaire de ${moisPrecedentLabel} n'est pas encore importé.`);
+  return phrases;
+}
+
+// Sparkline minimaliste façon Revolut/Stripe : une courbe fine, sans axe ni
+// grille. Fonction pure (aucune valeur externe/Supabase n'y entre autrement
+// que sous forme de nombres déjà agrégés).
+function sparklineSVG(valeurs, largeur, hauteur, couleur){
+  if(!valeurs || valeurs.length<2) return null;
+  const min = Math.min(...valeurs), max = Math.max(...valeurs);
+  const marge = 4;
+  const x = (i) => marge + (i/(valeurs.length-1)) * (largeur-2*marge);
+  const y = (v) => max===min ? hauteur/2 : hauteur - marge - ((v-min)/(max-min)) * (hauteur-2*marge);
+  const points = valeurs.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  return `<svg viewBox="0 0 ${largeur} ${hauteur}" width="100%" height="${hauteur}" preserveAspectRatio="none" class="sparkline" aria-hidden="true"><polyline points="${points}" fill="none" stroke="${couleur}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+function formatSigne(n, decimales){
+  const v = Math.abs(n) < 0.05 ? 0 : n;
+  return `${v>0?'+':''}${v.toFixed(decimales).replace('.',',')}`;
+}
+function classeDelta(pct){
+  return pct==null ? '' : (pct>0 ? 'delta-positif' : (pct<0 ? 'delta-negatif' : ''));
+}
+function ligneDelta(label, pct, absFormatte){
+  return `
+    <div class="comparaison-ligne">
+      <div class="comparaison-ligne-label">${escapeHTML(label)}</div>
+      <div class="comparaison-ligne-delta ${classeDelta(pct)}">
+        <span class="delta-pct">${pct!=null ? formatSigne(pct,1)+' %' : '—'}</span>
+        <span class="delta-eur">${absFormatte!=null ? '('+absFormatte+')' : ''}</span>
+      </div>
+    </div>`;
+}
+function renderColonneReference(label, ref){
+  return `
+    <div>
+      <div class="comparaison-bloc-titre">${escapeHTML(label)}</div>
+      <div class="reference-ligne"><span class="reference-ligne-label">CA HT</span><span class="reference-ligne-valeur">${fmtEUR(ref.ca)}</span></div>
+      <div class="reference-ligne"><span class="reference-ligne-label">Tickets</span><span class="reference-ligne-valeur">${ref.tickets}</span></div>
+      <div class="reference-ligne"><span class="reference-ligne-label">Panier moyen</span><span class="reference-ligne-valeur">${ref.panier? fmtEUR(ref.panier):'—'}</span></div>
+    </div>`;
+}
+function renderColonneDelta(label, delta){
+  if(!delta) return '';
+  return `
+    <div>
+      <div class="comparaison-bloc-titre">${escapeHTML(label)}</div>
+      ${ligneDelta('CA HT', delta.caPct, (delta.caEur>=0?'+':'')+fmtEUR(delta.caEur))}
+      ${ligneDelta('Tickets', delta.ticketsPct, (delta.ticketsDiff>=0?'+':'')+delta.ticketsDiff)}
+      ${ligneDelta('Panier moyen', delta.panierPct, delta.panierEur!=null ? (delta.panierEur>=0?'+':'')+fmtEUR(delta.panierEur) : null)}
+    </div>`;
+}
+
+// Bloc "du jour" : référence seule (6bis) tant que le CA du jour n'est pas
+// saisi, puis comparaison automatique (6ter) dès qu'il l'est — sans action de
+// l'utilisateur. Ne s'affiche pas du tout si aucune référence fiable (N-1 et
+// M-1) n'a été trouvée.
+function renderBlocJour(entite){
+  if(!entite.refN1 && !entite.refM1) return '';
+  const apresSaisie = !!entite.aujourdhui;
+  const colonnes = [];
+  if(apresSaisie){
+    colonnes.push(`
+      <div>
+        <div class="comparaison-bloc-titre">Aujourd'hui</div>
+        <div class="comparaison-ligne"><div class="comparaison-ligne-label">CA HT</div><div class="comparaison-ligne-valeur">${fmtEUR(entite.aujourdhui.ca)}</div></div>
+        <div class="comparaison-ligne"><div class="comparaison-ligne-label">Tickets</div><div class="comparaison-ligne-valeur">${entite.aujourdhui.tickets}</div></div>
+        <div class="comparaison-ligne"><div class="comparaison-ligne-label">Panier moyen</div><div class="comparaison-ligne-valeur">${entite.aujourdhui.panier? fmtEUR(entite.aujourdhui.panier):'—'}</div></div>
+      </div>`);
+    if(entite.refN1) colonnes.push(renderColonneDelta('Vs même jour, l’an dernier', entite.deltaN1));
+    if(entite.refM1) colonnes.push(renderColonneDelta('Vs même jour, le mois dernier', entite.deltaM1));
+  } else {
+    if(entite.refN1) colonnes.push(renderColonneReference('Même jour, l’an dernier', entite.refN1));
+    if(entite.refM1) colonnes.push(renderColonneReference('Même jour, le mois dernier', entite.refM1));
+  }
+  return `
+    <div class="section-title" style="font-size:13px;margin-top:20px;">${apresSaisie ? 'Comparaison du jour' : 'Repère pour aujourd’hui'}</div>
+    <div class="card"><div class="comparaison-grid">${colonnes.join('')}</div></div>
+  `;
+}
+
+// Bloc "cumul du mois" (6quater) : ne s'affiche que si au moins un cumul
+// comparable (N-1 ou M-1) a pu être calculé sur l'intégralité des jours déjà
+// saisis ce mois-ci (voir construireEntitePerformance).
+function renderBlocCumul(entite){
+  const c = entite.cumul;
+  if(!c.n1 && !c.m1) return '';
+  const colonnes = [`
+    <div>
+      <div class="comparaison-bloc-titre">Cumul du mois (${c.jours} jour${c.jours>1?'s':''} saisi${c.jours>1?'s':''})</div>
+      <div class="comparaison-ligne"><div class="comparaison-ligne-label">CA HT</div><div class="comparaison-ligne-valeur">${fmtEUR(c.ca)}</div></div>
+      <div class="comparaison-ligne"><div class="comparaison-ligne-label">Tickets</div><div class="comparaison-ligne-valeur">${c.tickets}</div></div>
+      <div class="comparaison-ligne"><div class="comparaison-ligne-label">Panier moyen</div><div class="comparaison-ligne-valeur">${c.panier? fmtEUR(c.panier):'—'}</div></div>
+    </div>`];
+  if(c.n1) colonnes.push(renderColonneDelta('Vs cumul comparable, l’an dernier', c.deltaN1Cumul));
+  if(c.m1) colonnes.push(renderColonneDelta('Vs cumul comparable, le mois dernier', c.deltaM1Cumul));
+  return `
+    <div class="section-title" style="font-size:13px;margin-top:20px;">Cumul du mois</div>
+    <div class="card"><div class="comparaison-grid">${colonnes.join('')}</div></div>
+  `;
+}
+
+// Les 2 graphiques du cockpit (voir Lot G, point 9) : une tendance (sparkline,
+// sans axe ni grille) et une répartition par magasin (barres, sans dépendance
+// externe). Affichés uniquement sur l'onglet "Toute l'entreprise".
+function renderGraphiques(){
+  const valeurs = DASHBOARD_ENTITES.serieJournaliereEntreprise.map(p=>p.ca);
+  const spark = valeurs.length>=2 ? sparklineSVG(valeurs, 800, 64, '#2f6bff') : null;
+  const repartition = DASHBOARD_ENTITES.repartitionMagasins;
+  const totalRepartition = repartition.reduce((s,m)=>s+m.ca,0);
+  return `
+    ${spark ? `
+    <div class="section-title" style="font-size:13px;margin-top:20px;">Tendance du CA (jours saisis ce mois-ci)</div>
+    <div class="card">${spark}</div>` : ''}
+    <div class="section-title" style="font-size:13px;margin-top:20px;">Répartition du CA par magasin</div>
+    <div class="card">
+      ${repartition.map(m=>{
+        const pct = totalRepartition>0 ? (m.ca/totalRepartition*100) : 0;
+        return `
+        <div class="repartition-bar">
+          <div class="repartition-bar-label"><b>${escapeHTML(m.nom)}</b><span>${fmtEUR(m.ca)} · ${pct.toFixed(1).replace('.',',')} %</span></div>
+          <div class="repartition-bar-track"><div class="repartition-bar-fill" style="width:${pct}%"></div></div>
+        </div>`;
+      }).join('') || `<div class="empty">Aucune donnée</div>`}
+    </div>
+  `;
+}
+
+// Contenu de l'onglet Niveau 2 sélectionné — ne relance aucune requête
+// Supabase : réutilise les données déjà calculées par renderDashboard().
+function renderNiveau2Body(){
+  const body = document.getElementById('dashboard-niveau2-body');
+  if(!body || !DASHBOARD_ENTITES) return;
+  const entite = DASHBOARD_TAB==='ENTREPRISE' ? DASHBOARD_ENTITES.entreprise : DASHBOARD_ENTITES.parCode[DASHBOARD_TAB];
+  if(!entite){ body.innerHTML = `<div class="empty">Aucune donnée pour ce magasin.</div>`; return; }
+  body.innerHTML = `
+    <div class="grid grid-3" style="margin-bottom:18px;">
+      <div class="card"><div class="kpi-label">CA HT (mois)</div><div class="kpi-value" style="font-size:20px;">${fmtEUR(entite.caMois)}</div></div>
+      <div class="card"><div class="kpi-label">Tickets (mois)</div><div class="kpi-value" style="font-size:20px;">${entite.ticketsMois}</div></div>
+      <div class="card"><div class="kpi-label">Panier moyen (mois)</div><div class="kpi-value" style="font-size:20px;">${entite.panierMoyenMois? fmtEUR(entite.panierMoyenMois):'—'}</div></div>
+    </div>
+    ${renderBlocJour(entite)}
+    ${renderBlocCumul(entite)}
+    ${DASHBOARD_TAB==='ENTREPRISE' ? renderGraphiques() : ''}
+  `;
+}
+
 async function renderDashboard(){
   const content = document.getElementById('content');
   content.innerHTML = `<div class="empty empty-loading">Chargement...</div>`;
@@ -604,6 +968,7 @@ async function renderDashboard(){
   const moisStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const monthStart = toLocalISODate(new Date(now.getFullYear(), now.getMonth(), 1));
   const monthEnd = toLocalISODate(new Date(now.getFullYear(), now.getMonth()+1, 0));
+  const dateAujourdhui = toLocalISODate(now);
 
   // Le relevé bancaire et les bulletins de salaire concernent le MOIS PRÉCÉDENT
   // (on ne les reçoit qu'une fois le mois clôturé)
@@ -611,13 +976,15 @@ async function renderDashboard(){
   const moisPrecedentStr = `${moisPrecedentDate.getFullYear()}-${String(moisPrecedentDate.getMonth()+1).padStart(2,'0')}`;
   const moisPrecedentLabel = moisPrecedentDate.toLocaleDateString('fr-FR',{month:'long', year:'numeric'});
 
-  const [
-    { data: caRows },
-    { count: aControlerCount },
-    { data: importsBanque },
-    { count: sansJustifCount },
-    { data: salairesMois }
-  ] = await Promise.all([
+  // Fenêtres de recherche des jours comparables (voir trouverJourComparable) :
+  // largeur exacte nécessaire pour couvrir, en une seule requête par période,
+  // les ±2 semaines de marge de tous les jours du mois en cours.
+  const m1FetchDebut = decalerDate(monthStart, -6*7);
+  const m1FetchFin = decalerDate(monthEnd, -2*7);
+  const n1FetchDebut = decalerDate(monthStart, -54*7);
+  const n1FetchFin = decalerDate(monthEnd, -50*7);
+
+  const resultats = await Promise.allSettled([
     sb.from('ca_journalier')
       .select('*, magasins(code,nom)')
       .eq('exercice_id', STATE.currentExercice.id)
@@ -640,21 +1007,38 @@ async function renderDashboard(){
       .eq('justificatif_non_requis', false),
     sb.from('salaires')
       .select('collaborateur_id, imports:document_id(chemin_storage)')
-      .eq('mois', moisPrecedentStr)
+      .eq('mois', moisPrecedentStr),
+    sb.from('ca_journalier')
+      .select('date_operation,magasin_id,ca_ht,nb_tickets,ferme')
+      .gte('date_operation', m1FetchDebut).lte('date_operation', m1FetchFin),
+    sb.from('ca_journalier')
+      .select('date_operation,magasin_id,ca_ht,nb_tickets,ferme')
+      .gte('date_operation', n1FetchDebut).lte('date_operation', n1FetchFin)
   ]);
 
-  const rows = caRows || [];
+  // Chaque requête est traitée indépendamment : l'échec de l'une (ex. réseau
+  // coupé pendant l'appel) ne doit jamais empêcher l'affichage du reste du
+  // tableau de bord.
+  const valeur = (r) => (r.status==='fulfilled' && !r.value.error) ? r.value : null;
+  resultats.forEach((r,i)=>{ if(r.status==='rejected' || r.value?.error) console.error(`Tableau de bord : échec requête #${i}`, r.status==='rejected' ? r.reason : r.value.error); });
+  const rCa = valeur(resultats[0]);
+  const rControler = valeur(resultats[1]);
+  const rImports = valeur(resultats[2]);
+  const rSansJustif = valeur(resultats[3]);
+  const rSalaires = valeur(resultats[4]);
+  const rM1 = valeur(resultats[5]);
+  const rN1 = valeur(resultats[6]);
+
+  const rows = rCa?.data || [];
   const totalCA = rows.reduce((s,r)=>s + Number(r.ca_ht||0), 0);
   const totalTickets = rows.reduce((s,r)=>s + Number(r.nb_tickets||0), 0);
   const panierMoyen = totalTickets>0 ? totalCA/totalTickets : null;
+  const aControlerCount = rControler ? (rControler.count ?? 0) : null;
+  const importsBanque = rImports?.data || [];
+  const sansJustifCount = rSansJustif ? (rSansJustif.count ?? 0) : null;
+  const salairesMois = rSalaires?.data || [];
 
-  const parMagasin = {};
-  STATE.magasins.forEach(m=>parMagasin[m.id] = {nom:m.nom, ca:0});
-  rows.forEach(r=>{
-    if(parMagasin[r.magasin_id]) parMagasin[r.magasin_id].ca += Number(r.ca_ht||0);
-  });
-
-  // Check-list du mois : CA saisi par magasin, sur les jours "requis" seulement
+  // Check-list de complétude (jours ouvrés déjà "dus") — sert aux actions rapides
   // (dimanches et jours fériés exclus ; aujourd'hui n'est exigé qu'à partir de 21h)
   let limiteDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   if(now.getHours() < 21) limiteDate.setDate(limiteDate.getDate()-1);
@@ -679,21 +1063,15 @@ async function renderDashboard(){
       parMagasinJours[r.magasin_id] = (parMagasinJours[r.magasin_id]||0) + 1;
     }
   });
-  const caChecklist = STATE.magasins.map(m=>{
-    const saisis = parMagasinJours[m.id] || 0;
-    const total = joursRequisListe.length;
-    const complet = saisis >= total;
-    return { nom: m.nom, saisis, total, complet };
-  });
-  const caTousComplets = caChecklist.every(c=>c.complet);
+  const caTousComplets = STATE.magasins.every(m => (parMagasinJours[m.id]||0) >= joursRequisListe.length);
 
-  const releveImporte = (importsBanque||[]).length > 0;
+  const releveImporte = importsBanque.length > 0;
 
   // Le dirigeant n'a pas de bulletin de salaire classique : exclu de ce comptage.
   const collabAvecBulletin = STATE.collaborateurs.filter(c=>c.affectation!=='DIRIGEANT');
   const activeCollabIds = new Set(collabAvecBulletin.map(c=>c.id));
   const bulletinsRecuIds = new Set(
-    (salairesMois||[])
+    salairesMois
       .filter(s => s.imports?.chemin_storage && activeCollabIds.has(s.collaborateur_id))
       .map(s => s.collaborateur_id)
   );
@@ -701,86 +1079,120 @@ async function renderDashboard(){
   const bulletinsRecus = bulletinsRecuIds.size;
   const bulletinsTousRecus = totalSalaries > 0 && bulletinsRecus >= totalSalaries;
 
-  const controleAccent = aControlerCount>0 ? 'kpi-accent-orange' : 'kpi-accent-green';
-  const controleIcon = aControlerCount>0 ? 'alertCircle' : 'checkCircle';
+  // ---- Performance par magasin : cumul, référence et comparaison du jour ----
+  const mapActuel = {}, mapM1 = {}, mapN1 = {};
+  rows.forEach(r=> mapActuel[`${r.magasin_id}_${r.date_operation}`] = r);
+  (rM1?.data||[]).forEach(r=> mapM1[`${r.magasin_id}_${r.date_operation}`] = r);
+  (rN1?.data||[]).forEach(r=> mapN1[`${r.magasin_id}_${r.date_operation}`] = r);
+
+  const joursDuMoisJusquaAujourdhui = [];
+  {
+    const dernier = dateAujourdhui < monthEnd ? dateAujourdhui : monthEnd;
+    if(dernier >= monthStart){
+      let d = new Date(monthStart+'T00:00:00');
+      const fin = new Date(dernier+'T00:00:00');
+      while(d <= fin){ joursDuMoisJusquaAujourdhui.push(toLocalISODate(d)); d.setDate(d.getDate()+1); }
+    }
+  }
+
+  const entitesMagasins = STATE.magasins.map(m => construireEntitePerformance(m, dateAujourdhui, joursDuMoisJusquaAujourdhui, mapActuel, mapM1, mapN1));
+  const parCode = {};
+  entitesMagasins.forEach(e=>parCode[e.code]=e);
+
+  const serieJournaliereEntreprise = joursDuMoisJusquaAujourdhui.map(d=>{
+    let ca = 0, saisi = false;
+    STATE.magasins.forEach(m=>{
+      const row = mapActuel[`${m.id}_${d}`];
+      if(row && row.ca_ht !== null){ ca += Number(row.ca_ht||0); saisi = true; }
+    });
+    return saisi ? { date: d, ca } : null;
+  }).filter(Boolean);
+
+  DASHBOARD_ENTITES = {
+    entreprise: fusionnerEntreprise(entitesMagasins),
+    parCode,
+    serieJournaliereEntreprise,
+    repartitionMagasins: entitesMagasins.map(e=>({ nom: e.nom, ca: e.caMois }))
+  };
+
+  const phrasesResume = genererResumeIntelligent(entitesMagasins, aControlerCount, releveImporte, moisPrecedentLabel);
+
+  const actions = [];
+  if((aControlerCount||0)>0) actions.push({label:`Contrôler ${aControlerCount} opération${aControlerCount>1?'s':''}`, page:'controle', icon:'controle'});
+  if(!caTousComplets) actions.push({label:'Compléter la saisie du CA', page:'ca', icon:'ca'});
+  if(!releveImporte) actions.push({label:`Importer le relevé bancaire (${moisPrecedentLabel})`, page:'banque', icon:'banque'});
+  if((sansJustifCount||0)>0) actions.push({label:`Ajouter ${sansJustifCount} justificatif${sansJustifCount>1?'s':''}`, page:'banque', icon:'alertTriangle'});
+  if(totalSalaries>0 && !bulletinsTousRecus) actions.push({label:'Compléter les bulletins de salaire', page:'salaries', icon:'salaries'});
+  const actionsRetenues = actions.slice(0,4);
+
+  const controleAccent = aControlerCount===null ? 'kpi-accent-muted' : (aControlerCount>0 ? 'kpi-accent-orange' : 'kpi-accent-green');
+  const controleIcon = aControlerCount===null ? 'clock' : (aControlerCount>0 ? 'alertCircle' : 'checkCircle');
+  const libelleMois = now.toLocaleDateString('fr-FR',{month:'long', year:'numeric'});
 
   content.innerHTML = `
+    <div class="dashboard-exercice">Exercice ${escapeHTML(STATE.currentExercice.libelle)} · du ${fmtDate(STATE.currentExercice.date_debut)} au ${fmtDate(STATE.currentExercice.date_fin)}</div>
+
     <div class="grid grid-4 kpi-grid">
       <div class="card kpi-card kpi-accent-blue" id="kpi-ca" role="button" tabindex="0" aria-label="Ouvrir la saisie du CA">
         <div class="kpi-top"><span class="kpi-icon">${icon('ca')}</span><span class="kpi-label">CA HT du mois</span></div>
         <div class="kpi-value">${fmtEUR(totalCA)}</div>
-        <div class="kpi-sub">${now.toLocaleDateString('fr-FR',{month:'long', year:'numeric'})}</div>
+        <div class="kpi-sub">${libelleMois} — tous magasins + Internet</div>
       </div>
       <div class="card kpi-card kpi-accent-navy" id="kpi-tickets" role="button" tabindex="0" aria-label="Ouvrir le journal des ventes">
-        <div class="kpi-top"><span class="kpi-icon">${icon('tickets')}</span><span class="kpi-label">Nombre de tickets</span></div>
+        <div class="kpi-top"><span class="kpi-icon">${icon('tickets')}</span><span class="kpi-label">Tickets du mois</span></div>
         <div class="kpi-value">${totalTickets}</div>
-        <div class="kpi-sub">Panier moyen : ${panierMoyen? fmtEUR(panierMoyen):'—'}</div>
+        <div class="kpi-sub">${libelleMois}</div>
       </div>
       <div class="card kpi-card kpi-accent-muted">
-        <div class="kpi-top"><span class="kpi-icon">${icon('calendar')}</span><span class="kpi-label">Exercice en cours</span></div>
-        <div class="kpi-value" style="font-size:17px;">${escapeHTML(STATE.currentExercice.libelle)}</div>
-        <div class="kpi-sub">Du ${fmtDate(STATE.currentExercice.date_debut)} au ${fmtDate(STATE.currentExercice.date_fin)}</div>
+        <div class="kpi-top"><span class="kpi-icon">${icon('ca')}</span><span class="kpi-label">Panier moyen</span></div>
+        <div class="kpi-value">${panierMoyen? fmtEUR(panierMoyen) : '—'}</div>
+        <div class="kpi-sub">${libelleMois}</div>
       </div>
       <div class="card kpi-card ${controleAccent}" id="kpi-controle" role="button" tabindex="0" aria-label="Ouvrir les opérations à contrôler">
         <div class="kpi-top"><span class="kpi-icon">${icon(controleIcon)}</span><span class="kpi-label">Opérations à contrôler</span></div>
-        <div class="kpi-value" style="color:${aControlerCount>0?'#b5730a':'#1c8a4b'}">${aControlerCount||0}</div>
+        <div class="kpi-value" style="color:${aControlerCount===null?'var(--muted)':(aControlerCount>0?'#b5730a':'#1c8a4b')}">${aControlerCount ?? '—'}</div>
         <div class="kpi-sub">Banque à vérifier / catégoriser</div>
       </div>
     </div>
 
-    <div class="section-title">Check-list du mois — ${now.toLocaleDateString('fr-FR',{month:'long', year:'numeric'})}</div>
-    <div class="card">
-      <div class="checklist-item">
-        <span class="checklist-icon ${caTousComplets?'ok':'warn'}">${icon(caTousComplets?'checkCircle':'alertTriangle')}</span>
-        <div style="flex:1;">
-          <div class="checklist-label">Chiffre d'affaires saisi</div>
-          <div class="checklist-detail">
-            ${caChecklist.map(c=>`${escapeHTML(c.nom)} : ${c.saisis}/${c.total} jour(s) ouvré(s)${c.complet?' ✓':''}`).join(' · ')}
-          </div>
-        </div>
-      </div>
-      <div class="checklist-item">
-        <span class="checklist-icon ${releveImporte?'ok':'warn'}">${icon(releveImporte?'checkCircle':'alertTriangle')}</span>
-        <div style="flex:1;">
-          <div class="checklist-label">Relevé bancaire Crédit Agricole importé <span style="font-weight:400;color:var(--muted);">(${moisPrecedentLabel})</span></div>
-          <div class="checklist-detail">${releveImporte ? `Importé (${(importsBanque||[]).length} fichier(s))` : `Aucun import détecté pour ${moisPrecedentLabel} — pensez à l'importer dans « Import bancaire »`}</div>
-        </div>
-      </div>
-      <div class="checklist-item">
-        <span class="checklist-icon ${(sansJustifCount||0)===0?'ok':'warn'}">${icon((sansJustifCount||0)===0?'checkCircle':'alertTriangle')}</span>
-        <div style="flex:1;">
-          <div class="checklist-label">Justificatifs de dépenses</div>
-          <div class="checklist-detail">${(sansJustifCount||0)===0 ? 'Tout est couvert' : `${sansJustifCount} dépense(s) sans justificatif ce mois — voir « Opérations à contrôler »`}</div>
-        </div>
-      </div>
-      <div class="checklist-item">
-        <span class="checklist-icon ${totalSalaries===0?'pending':(bulletinsTousRecus?'ok':'warn')}">${icon(totalSalaries===0?'clock':(bulletinsTousRecus?'checkCircle':'alertTriangle'))}</span>
-        <div style="flex:1;">
-          <div class="checklist-label">Bulletins de salaire <span style="font-weight:400;color:var(--muted);">(${moisPrecedentLabel})</span></div>
-          <div class="checklist-detail">${totalSalaries===0 ? 'Aucun salarié actif enregistré' : `${bulletinsRecus}/${totalSalaries} salarié(s) — voir « Salariés »`}</div>
-        </div>
-      </div>
-    </div>
+    ${phrasesResume.length ? `
+    <div class="resume-intelligent">
+      <div class="resume-intelligent-title">Résumé intelligent</div>
+      <ul>${phrasesResume.map(p=>`<li>${escapeHTML(p)}</li>`).join('')}</ul>
+    </div>` : ''}
 
-    <div class="section-title">Répartition du CA par magasin (mois en cours)</div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Magasin</th><th>CA HT</th><th>Part du total</th></tr></thead>
-        <tbody>
-          ${Object.values(parMagasin).map(m=>`
-            <tr>
-              <td>${escapeHTML(m.nom)}</td>
-              <td>${fmtEUR(m.ca)}</td>
-              <td>${totalCA>0 ? ((m.ca/totalCA)*100).toFixed(1)+' %' : '—'}</td>
-            </tr>`).join('') || `<tr><td colspan="3" class="empty">Aucune donnée</td></tr>`}
-        </tbody>
-      </table>
+    ${actionsRetenues.length ? `
+    <div class="section-title">Actions rapides</div>
+    <div class="actions-rapides">
+      ${actionsRetenues.map(a=>`<button class="action-rapide-btn" data-page="${a.page}">${icon(a.icon)}<span>${escapeHTML(a.label)}</span></button>`).join('')}
+    </div>` : ''}
+
+    <div class="section-title">Performance commerciale</div>
+    <div class="tabs" id="dashboard-tabs">
+      <button class="tab-btn" data-code="ENTREPRISE">Toute l'entreprise</button>
+      ${STATE.magasins.map(m=>`<button class="tab-btn" data-code="${m.code}">${escapeHTML(m.nom)}</button>`).join('')}
     </div>
+    <div id="dashboard-niveau2-body"></div>
   `;
 
   rendreKpiCliquable('kpi-ca', 'ca');
   rendreKpiCliquable('kpi-tickets', 'journal');
   rendreKpiCliquable('kpi-controle', 'controle');
+
+  document.querySelectorAll('.actions-rapides .action-rapide-btn').forEach(b=>{
+    b.addEventListener('click', ()=>goToPage(b.dataset.page));
+  });
+
+  document.querySelectorAll('#dashboard-tabs .tab-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.code===DASHBOARD_TAB);
+    b.addEventListener('click', ()=>{
+      DASHBOARD_TAB = b.dataset.code;
+      document.querySelectorAll('#dashboard-tabs .tab-btn').forEach(x=>x.classList.toggle('active', x===b));
+      renderNiveau2Body();
+    });
+  });
+
+  renderNiveau2Body();
 }
 
 // Rend une carte KPI cliquable au clic ET au clavier (Entrée / Espace) —
@@ -3767,7 +4179,7 @@ function renderAproposContent(){
   const nouveautes = (VERSION_INFO.highlights||[]).map(h=>`<li>${escapeHTML(h)}</li>`).join('');
   el.innerHTML = `
     <div style="font-size:13.5px;line-height:1.7;margin-bottom:12px;">
-      <div><b>GEM.VAP Pilotage</b> — version <b>${escapeHTML(VERSION_INFO.version)}</b></div>
+      <div><b>Jéthro</b> — version <b>${escapeHTML(VERSION_INFO.version)}</b></div>
       <div class="hint" style="margin:2px 0 10px 0;">Publiée le ${dateAffichee} — Environnement : ${escapeHTML(envLabel)}</div>
       ${nouveautes ? `<div style="font-weight:700;margin-bottom:4px;">Principales nouveautés :</div><ul style="margin:0 0 0 18px;">${nouveautes}</ul>` : ''}
     </div>

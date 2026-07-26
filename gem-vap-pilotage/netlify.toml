@@ -1,4 +1,4 @@
-# Configuration Netlify — GEM.VAP Pilotage
+# Configuration Netlify — Jéthro
 # Site statique (HTML/CSS/JS), publié directement depuis la racine du dépôt.
 # Aucune étape de build : les fichiers sont servis tels quels.
 
@@ -40,11 +40,11 @@
     Cache-Control = "no-cache, must-revalidate"
 
 [[headers]]
-  for = "/icon-192.png"
+  for = "/icon-192-jethro.png"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
 [[headers]]
-  for = "/icon-512.png"
+  for = "/icon-512-jethro.png"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
