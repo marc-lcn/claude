@@ -255,15 +255,28 @@ tr.ligne-fermee input[type="number"]{background:#e5e7f0;}
 .mois-content::-webkit-scrollbar{height:10px;}
 .mois-content::-webkit-scrollbar-thumb{background:#c7cbe0;border-radius:6px;}
 .mois-content::-webkit-scrollbar-track{background:#f2f4fa;}
-.hscroll-top{overflow-x:auto;overflow-y:hidden;height:14px;border-bottom:1px solid var(--border);}
-.hscroll-top-inner{height:1px;}
-.hscroll-top::-webkit-scrollbar{height:10px;}
-.hscroll-top::-webkit-scrollbar-thumb{background:#9aa0c4;border-radius:6px;}
-.hscroll-top::-webkit-scrollbar-track{background:#f2f4fa;}
-.hscroll-body{overflow-x:auto;-webkit-overflow-scrolling:touch;}
-.hscroll-body::-webkit-scrollbar{height:10px;}
-.hscroll-body::-webkit-scrollbar-thumb{background:#c7cbe0;border-radius:6px;}
-.hscroll-body::-webkit-scrollbar-track{background:#f2f4fa;}
+/* Lignes de la page "Opérations à contrôler" : flexbox (pas un <table>), pour
+   que la ligne entière tienne dans le cadre sans défilement horizontal. Le
+   groupe secondaire (état / justificatif / valider) est un seul enfant flex
+   du point de vue du parent : quand la largeur manque, il bascule d'un bloc
+   à la ligne suivante — comportement natif du navigateur, sans média-requête. */
+.controle-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:10px 14px;border-bottom:1px solid var(--border);}
+.controle-row:last-child{border-bottom:none;}
+@media(hover:hover){.controle-row:not(.controle-row-header):hover{background:#f7f8fc;}}
+.controle-row-header{padding:8px 14px;font-size:12px;font-weight:600;color:var(--muted);}
+.controle-row-principal{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;flex:1 1 420px;min-width:0;}
+.controle-row-secondaire{display:flex;flex-wrap:wrap;align-items:center;gap:10px;}
+.col-check{flex:0 0 auto;width:20px;}
+.col-date{flex:0 0 auto;width:76px;color:var(--muted);font-size:12.5px;}
+.col-libelle{flex:1 1 160px;min-width:120px;font-size:13.5px;}
+.col-montant{flex:0 0 auto;width:78px;text-align:right;font-variant-numeric:tabular-nums;font-size:13.5px;}
+.col-categorie{flex:0 0 auto;width:150px;}
+.col-affectation{flex:0 0 auto;width:100px;}
+.col-categorie .row-select,.col-affectation .row-select{max-width:none;width:100%;}
+.col-etat{flex:0 0 auto;}
+.col-justificatif{flex:0 0 auto;font-size:12.5px;}
+.col-valider{flex:0 0 auto;}
+@media(max-width:520px){.controle-row-header{display:none;}}
 .pill-toggle{padding:8px 16px;border-radius:999px;border:1px solid var(--border);background:#fff;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;transition:all .15s;}
 @media(hover:hover){.pill-toggle:hover{border-color:var(--blue);color:var(--navy);}}
 .pill-toggle.active{background:var(--navy);color:#fff;border-color:var(--navy);}
@@ -3015,6 +3028,11 @@ let OPEN_MOIS = new Set();
 let CONTROLE_TRI_CHAMP = 'date';
 let CONTROLE_TRI_DIR = 'desc';
 let CONTROLE_ANNEES = new Set();
+let CONTROLE_RECHERCHE = '';
+// Dernier jeu de lignes récupéré de Supabase (voir loadControleRows). La recherche
+// par libellé filtre uniquement ce cache en mémoire : elle ne redéclenche jamais
+// une requête réseau à chaque frappe.
+let CONTROLE_CACHE = [];
 
 async function renderControlePage(){
   const content = document.getElementById('content');
@@ -3031,6 +3049,7 @@ async function renderControlePage(){
       <button class="btn small secondary" id="valider-selection-btn" disabled>☑️ Valider la sélection (0)</button>
       <button class="btn small secondary" id="marquer-selection-non-requis-btn" disabled>🧾 Sans justificatif (sélection) (0)</button>
     </div>
+    <input type="text" id="controle-search" placeholder="🔎 Rechercher un libellé..." value="${escapeHTML(CONTROLE_RECHERCHE)}" style="width:100%;max-width:320px;padding:9px 12px;border:1px solid var(--border);border-radius:9px;font-size:13.5px;margin-bottom:14px;">
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
       <label style="font-size:13px;color:var(--muted);">Trier par</label>
       <select id="tri-champ" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
@@ -3054,6 +3073,10 @@ async function renderControlePage(){
   document.querySelectorAll('#controle-tabs .tab-btn').forEach(b=>{
     b.classList.toggle('active', b.dataset.f===CONTROLE_FILTER);
     b.addEventListener('click', ()=>{ CONTROLE_FILTER = b.dataset.f; renderControlePage(); });
+  });
+  document.getElementById('controle-search').addEventListener('input', (e)=>{
+    CONTROLE_RECHERCHE = e.target.value;
+    renderControleGroups();
   });
   document.getElementById('filtre-sans-justificatif').checked = SANS_JUSTIFICATIF_ONLY;
   document.getElementById('filtre-sans-justificatif').addEventListener('change', (e)=>{
@@ -3111,12 +3134,16 @@ async function validerToutesReconnues(){
   loadControleRows();
 }
 
+// Ligne "Opérations à contrôler" en flexbox (voir .controle-row et enfants dans
+// le CSS) : le groupe secondaire (état/justificatif/valider) est un seul bloc
+// flex qui bascule à la ligne suivante quand la largeur manque, pour que la
+// ligne tienne toujours dans le cadre sans défilement horizontal.
 function buildRowHtml(op){
   const badge = op.etat==='reconnu_auto' || op.etat==='valide_manuel' ? 'green' : (op.etat==='a_verifier' ? 'orange' : 'red');
   const badgeLabel = {reconnu_auto:'Reconnue', a_verifier:'À vérifier', a_categoriser:'À catégoriser', valide_manuel:'Validée'}[op.etat];
   let justifCell;
   if(!op.debit){
-    justifCell = `<span style="color:var(--muted);font-size:12.5px;">— (recette)</span>`;
+    justifCell = `<span style="color:var(--muted);">— (recette)</span>`;
   } else if(op.justificatif_non_requis){
     justifCell = `<span class="badge green">Non requis</span>
       <button class="btn secondary small annuler-non-requis-btn" style="margin-left:6px;">Annuler</button>`;
@@ -3128,28 +3155,32 @@ function buildRowHtml(op){
       <button class="btn secondary small marquer-non-requis-btn" style="margin-left:6px;">Sans justificatif</button>`;
   }
   return `
-  <tr data-id="${op.id}" data-path="${op.piece_jointe_path||''}" data-etat="${op.etat}" data-categorie-finale="${op.categorie_finale_id||''}" data-affectation="${op.affectation||''}">
-    <td><input type="checkbox" class="row-check" data-id="${op.id}"></td>
-    <td>${fmtDate(op.date_operation)}</td>
-    <td style="max-width:260px;white-space:normal;">${escapeHTML(op.libelle)}</td>
-    <td>${op.debit ? fmtEUR(op.debit) : ''}</td>
-    <td>${op.credit ? fmtEUR(op.credit) : ''}</td>
-    <td>
-      <select class="row-select cat-select">
-        <option value="">—</option>
-        ${STATE.categories.map(c=>`<option value="${c.id}" ${c.id===(op.categorie_finale_id||op.categorie_proposee_id)?'selected':''}>${escapeHTML(c.libelle)}</option>`).join('')}
-      </select>
-    </td>
-    <td>
-      <select class="row-select aff-select">
-        <option value="">—</option>
-        ${affectationsDisponibles().map(a=>`<option value="${a}" ${a===(op.affectation||'COMMUN')?'selected':''}>${a}</option>`).join('')}
-      </select>
-    </td>
-    <td><span class="badge ${badge}">${badgeLabel}</span></td>
-    <td>${justifCell}</td>
-    <td><button class="btn small valider-btn">Valider</button></td>
-  </tr>`;
+  <div class="controle-row" data-id="${op.id}" data-path="${op.piece_jointe_path||''}" data-etat="${op.etat}" data-categorie-finale="${op.categorie_finale_id||''}" data-affectation="${op.affectation||''}">
+    <div class="controle-row-principal">
+      <span class="col-check"><input type="checkbox" class="row-check" data-id="${op.id}"></span>
+      <span class="col-date">${fmtDate(op.date_operation)}</span>
+      <span class="col-libelle">${escapeHTML(op.libelle)}</span>
+      <span class="col-montant">${op.debit ? fmtEUR(op.debit) : ''}</span>
+      <span class="col-montant">${op.credit ? fmtEUR(op.credit) : ''}</span>
+      <span class="col-categorie">
+        <select class="row-select cat-select">
+          <option value="">—</option>
+          ${STATE.categories.map(c=>`<option value="${c.id}" ${c.id===(op.categorie_finale_id||op.categorie_proposee_id)?'selected':''}>${escapeHTML(c.libelle)}</option>`).join('')}
+        </select>
+      </span>
+      <span class="col-affectation">
+        <select class="row-select aff-select">
+          <option value="">—</option>
+          ${affectationsDisponibles().map(a=>`<option value="${a}" ${a===(op.affectation||'COMMUN')?'selected':''}>${a}</option>`).join('')}
+        </select>
+      </span>
+    </div>
+    <div class="controle-row-secondaire">
+      <span class="col-etat"><span class="badge ${badge}">${badgeLabel}</span></span>
+      <span class="col-justificatif">${justifCell}</span>
+      <span class="col-valider"><button class="btn small valider-btn">Valider</button></span>
+    </div>
+  </div>`;
 }
 
 function wireRowEvents(tr){
@@ -3179,6 +3210,10 @@ async function fetchToutesLesLignes(buildQuery){
   return toutes;
 }
 
+// Récupère les lignes depuis Supabase (selon état/année/sans-justificatif —
+// les seuls filtres appliqués côté serveur) et les met en cache. Le tri et la
+// recherche par libellé, purement des concerns d'affichage, sont appliqués
+// ensuite par renderControleGroups() sans nouvelle requête réseau.
 async function loadControleRows(){
   let rangeStart = null, rangeEnd = null;
   if(CONTROLE_ANNEES.size>0){
@@ -3186,20 +3221,30 @@ async function loadControleRows(){
     rangeStart = `${Math.min(...anneesArr)}-01-01`;
     rangeEnd = `${Math.max(...anneesArr)}-12-31T23:59:59`;
   }
-  let data = await fetchToutesLesLignes(()=>{
+  CONTROLE_CACHE = await fetchToutesLesLignes(()=>{
     let q = sb.from('operations_bancaires').select('*').order('date_operation',{ascending:false});
     if(CONTROLE_FILTER!=='toutes') q = q.eq('etat', CONTROLE_FILTER);
     if(SANS_JUSTIFICATIF_ONLY){ q = q.not('debit','is', null).is('piece_jointe_path', null).eq('justificatif_non_requis', false); }
     if(rangeStart) q = q.gte('date_operation', rangeStart).lte('date_operation', rangeEnd);
     return q;
   });
+  renderControleGroups();
+}
+
+function renderControleGroups(){
   const container = document.getElementById('controle-groups');
-  if(!data || data.length===0){ container.innerHTML = `<div class="empty">Aucune opération.</div>`; return; }
+  if(!CONTROLE_CACHE || CONTROLE_CACHE.length===0){ container.innerHTML = `<div class="empty">Aucune opération.</div>`; return; }
+  let data = CONTROLE_CACHE;
+
+  // Recherche par libellé (client, ne redéclenche jamais de requête réseau)
+  const terme = CONTROLE_RECHERCHE.trim().toLowerCase();
+  if(terme) data = data.filter(op => (op.libelle||'').toLowerCase().includes(terme));
+  if(data.length===0){ container.innerHTML = `<div class="empty">Aucune opération ne correspond à « ${escapeHTML(CONTROLE_RECHERCHE.trim())} ».</div>`; return; }
 
   // Tri (à l'intérieur de chaque mois, les mois eux-mêmes restent du plus récent au plus ancien)
   const categoryMap = new Map(STATE.categories.map(c=>[c.id, c.libelle]));
   const etatOrdre = {a_categoriser:0, a_verifier:1, reconnu_auto:2, valide_manuel:3};
-  data.sort((a,b)=>{
+  data = [...data].sort((a,b)=>{
     let va, vb;
     if(CONTROLE_TRI_CHAMP==='libelle'){ va=(a.libelle||'').toLowerCase(); vb=(b.libelle||'').toLowerCase(); }
     else if(CONTROLE_TRI_CHAMP==='categorie'){
@@ -3229,6 +3274,24 @@ async function loadControleRows(){
   const keys = Object.keys(groups).sort().reverse();
   // Tous les mois sont repliés par défaut (l'utilisateur ouvre lui-même ce qu'il veut voir)
 
+  const enTeteLigne = `
+    <div class="controle-row controle-row-header">
+      <div class="controle-row-principal">
+        <span class="col-check"></span>
+        <span class="col-date">Date</span>
+        <span class="col-libelle">Libellé</span>
+        <span class="col-montant">Débit</span>
+        <span class="col-montant">Crédit</span>
+        <span class="col-categorie">Catégorie</span>
+        <span class="col-affectation">Affectation</span>
+      </div>
+      <div class="controle-row-secondaire">
+        <span class="col-etat">État</span>
+        <span class="col-justificatif">Justificatif</span>
+        <span class="col-valider"></span>
+      </div>
+    </div>`;
+
   container.innerHTML = keys.map(key=>{
     const g = groups[key];
     const isOpen = OPEN_MOIS.has(key);
@@ -3243,36 +3306,11 @@ async function loadControleRows(){
         </button>
       </div>
       <div class="mois-content" data-mois-content="${key}" style="display:${isOpen?'block':'none'};border-top:1px solid var(--border);">
-        <div class="hscroll-top" data-hscroll-top="${key}"><div class="hscroll-top-inner" data-hscroll-inner="${key}"></div></div>
-        <div class="hscroll-body" data-hscroll-body="${key}">
-          <table style="width:auto;min-width:1100px;">
-            <thead><tr>
-              <th></th><th>Date</th><th>Libellé</th><th>Débit</th><th>Crédit</th>
-              <th>Catégorie</th><th>Affectation</th><th>État</th><th>Justificatif</th><th></th>
-            </tr></thead>
-            <tbody>${g.rows.map(buildRowHtml).join('')}</tbody>
-          </table>
-        </div>
+        ${enTeteLigne}
+        ${g.rows.map(buildRowHtml).join('')}
       </div>
     </div>`;
   }).join('');
-
-  // Barre de défilement horizontale fixée sous l'en-tête, synchronisée avec le tableau
-  function majLargeurHscroll(key){
-    const bodyEl = container.querySelector(`[data-hscroll-body="${key}"]`);
-    const innerEl = container.querySelector(`[data-hscroll-inner="${key}"]`);
-    if(!bodyEl || !innerEl) return;
-    const table = bodyEl.querySelector('table');
-    innerEl.style.width = table.scrollWidth + 'px';
-  }
-  container.querySelectorAll('[data-hscroll-body]').forEach(bodyEl=>{
-    const key = bodyEl.dataset.hscrollBody;
-    const topEl = container.querySelector(`[data-hscroll-top="${key}"]`);
-    if(OPEN_MOIS.has(key)) majLargeurHscroll(key);
-    let sync = false;
-    topEl.addEventListener('scroll', ()=>{ if(sync) return; sync=true; bodyEl.scrollLeft = topEl.scrollLeft; sync=false; });
-    bodyEl.addEventListener('scroll', ()=>{ if(sync) return; sync=true; topEl.scrollLeft = bodyEl.scrollLeft; sync=false; });
-  });
 
   container.querySelectorAll('.mois-toggle').forEach(btn=>{
     btn.addEventListener('click', ()=>{
@@ -3280,7 +3318,7 @@ async function loadControleRows(){
       const el = container.querySelector(`.mois-content[data-mois-content="${key}"]`);
       const willOpen = el.style.display === 'none';
       el.style.display = willOpen ? 'block' : 'none';
-      if(willOpen){ OPEN_MOIS.add(key); majLargeurHscroll(key); } else OPEN_MOIS.delete(key);
+      if(willOpen) OPEN_MOIS.add(key); else OPEN_MOIS.delete(key);
       btn.querySelector('.chevron').textContent = willOpen ? '▲' : '▼';
     });
   });
@@ -3292,7 +3330,7 @@ async function loadControleRows(){
     });
   });
   container.querySelectorAll('.row-check').forEach(cb=>cb.addEventListener('change', updateSelectionCount));
-  container.querySelectorAll('tr[data-id]').forEach(tr=>wireRowEvents(tr));
+  container.querySelectorAll('.controle-row[data-id]').forEach(tr=>wireRowEvents(tr));
   updateSelectionCount();
 }
 
@@ -4516,7 +4554,7 @@ async function validerOperation(tr){
   // de catégorisation (qui n'est pas journalisé) — celle-ci l'est.
   if(etaitDejaValidee){
     const catMap = new Map(STATE.categories.map(c=>[c.id, c.libelle]));
-    const libelleOp = tr.children[2].textContent.trim();
+    const libelleOp = tr.querySelector('.col-libelle').textContent.trim();
     enregistrerAudit('modification_operation_validee', {
       tableConcernee: 'operations_bancaires',
       elementId: id,
@@ -4527,7 +4565,7 @@ async function validerOperation(tr){
   }
 
   // Proposer de mémoriser la règle, avec un mot-clé pertinent et modifiable
-  const libelle = tr.children[2].textContent.trim();
+  const libelle = tr.querySelector('.col-libelle').textContent.trim();
   const suggestion = suggestKeyword(libelle);
   const motCle = prompt(
     `Mémoriser cette catégorisation pour les prochains imports ?\n\nModifiez le mot-clé si besoin (laissez vide puis OK, ou Annuler, pour ne pas mémoriser) :`,
@@ -4612,12 +4650,12 @@ async function validerSelection(){
   const dejaValideesModifiees = []; // libellés des opérations déjà validées re-modifiées ici
 
   await Promise.all(checked.map(async (cb)=>{
-    const tr = cb.closest('tr');
+    const tr = cb.closest('.controle-row');
     const etaitDejaValidee = tr.dataset.etat === 'valide_manuel';
     const categorieId = tr.querySelector('.cat-select').value;
     const affectation = tr.querySelector('.aff-select').value || 'COMMUN';
     if(!categorieId){ manquantes++; return; }
-    const libelle = tr.children[2].textContent.trim();
+    const libelle = tr.querySelector('.col-libelle').textContent.trim();
     const { error } = await sb.from('operations_bancaires').update({
       categorie_finale_id: categorieId,
       affectation: affectation,
