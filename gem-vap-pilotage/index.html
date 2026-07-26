@@ -3055,6 +3055,7 @@ let OPEN_MOIS = new Set();
 let CONTROLE_TRI_CHAMP = 'date';
 let CONTROLE_TRI_DIR = 'desc';
 let CONTROLE_ANNEES = new Set();
+let CONTROLE_CATEGORIES_FILTRE = new Set(); // vide = aucun filtre (toutes affichées)
 let CONTROLE_RECHERCHE = '';
 // Dernier jeu de lignes récupéré de Supabase (voir loadControleRows). La recherche
 // par libellé filtre uniquement ce cache en mémoire : elle ne redéclenche jamais
@@ -3090,6 +3091,10 @@ async function renderControlePage(){
     </div>
     <div class="section-title" style="margin-top:0;font-size:13px;">Année</div>
     <div class="pill-row" id="controle-annees-row"></div>
+    <div class="section-title" style="font-size:13px;">Catégorie <span style="font-weight:400;color:var(--muted);font-size:12px;">(optionnel — aucune sélection = toutes affichées)</span></div>
+    <div class="pill-row" id="controle-categories-row">
+      ${STATE.categories.map(c=>`<button class="pill-toggle" data-categorie="${c.id}">${escapeHTML(c.libelle)}</button>`).join('')}
+    </div>
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-bottom:14px;">
       <input type="checkbox" id="filtre-sans-justificatif">
       🧾 N'afficher que les dépenses sans justificatif
@@ -3104,6 +3109,15 @@ async function renderControlePage(){
   document.getElementById('controle-search').addEventListener('input', (e)=>{
     CONTROLE_RECHERCHE = e.target.value;
     renderControleGroups();
+  });
+  document.querySelectorAll('#controle-categories-row .pill-toggle').forEach(b=>{
+    const id = b.dataset.categorie;
+    b.classList.toggle('active', CONTROLE_CATEGORIES_FILTRE.has(id));
+    b.addEventListener('click', ()=>{
+      if(CONTROLE_CATEGORIES_FILTRE.has(id)) CONTROLE_CATEGORIES_FILTRE.delete(id); else CONTROLE_CATEGORIES_FILTRE.add(id);
+      b.classList.toggle('active');
+      renderControleGroups(); // filtre purement en mémoire, pas de nouvel appel réseau
+    });
   });
   document.getElementById('filtre-sans-justificatif').checked = SANS_JUSTIFICATIF_ONLY;
   document.getElementById('filtre-sans-justificatif').addEventListener('change', (e)=>{
@@ -3266,7 +3280,17 @@ function renderControleGroups(){
   // Recherche par libellé (client, ne redéclenche jamais de requête réseau)
   const terme = CONTROLE_RECHERCHE.trim().toLowerCase();
   if(terme) data = data.filter(op => (op.libelle||'').toLowerCase().includes(terme));
-  if(data.length===0){ container.innerHTML = `<div class="empty">Aucune opération ne correspond à « ${escapeHTML(CONTROLE_RECHERCHE.trim())} ».</div>`; return; }
+
+  // Filtre par catégorie(s) sélectionnée(s) — vide = aucun filtre
+  if(CONTROLE_CATEGORIES_FILTRE.size>0){
+    data = data.filter(op => CONTROLE_CATEGORIES_FILTRE.has(op.categorie_finale_id || op.categorie_proposee_id));
+  }
+
+  if(data.length===0){
+    const raison = terme ? `« ${escapeHTML(CONTROLE_RECHERCHE.trim())} »` : 'ces filtres';
+    container.innerHTML = `<div class="empty">Aucune opération ne correspond à ${raison}.</div>`;
+    return;
+  }
 
   // Tri (à l'intérieur de chaque mois, les mois eux-mêmes restent du plus récent au plus ancien)
   const categoryMap = new Map(STATE.categories.map(c=>[c.id, c.libelle]));
@@ -4287,6 +4311,7 @@ let ANALYSE_EXERCICES = new Set();
 let ANALYSE_ANNEES = new Set();
 let ANALYSE_MOIS = new Set();
 let ANALYSE_COMPARER = false;
+let ANALYSE_DISPATCH_COMMUN = false;
 let ANALYSE_INIT = false;
 
 const NOMS_MOIS = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
@@ -4332,9 +4357,13 @@ function renderAnalysePage(){
       ${NOMS_MOIS.map((label,i)=>`<button class="pill-toggle" data-mois="${i+1}">${label}</button>`).join('')}
     </div>
 
-    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-bottom:20px;">
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-bottom:10px;">
       <input type="checkbox" id="comparer-toggle">
       🔀 Comparer 2 périodes au lieu de les cumuler (cochez 2 exercices, ou 1 année civile + 2 mois)
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-bottom:20px;">
+      <input type="checkbox" id="dispatch-commun-toggle">
+      🔀 Répartir les charges/produits COMMUN et DIRIGEANT entre les 4 magasins, au prorata du CA du mois concerné
     </label>
 
     <div id="analyse-body"><div class="empty empty-loading">Chargement...</div></div>
@@ -4376,6 +4405,11 @@ function renderAnalysePage(){
     ANALYSE_COMPARER = e.target.checked;
     loadAnalyseData();
   });
+  document.getElementById('dispatch-commun-toggle').checked = ANALYSE_DISPATCH_COMMUN;
+  document.getElementById('dispatch-commun-toggle').addEventListener('change', (e)=>{
+    ANALYSE_DISPATCH_COMMUN = e.target.checked;
+    loadAnalyseData();
+  });
 
   loadAnalyseData();
 }
@@ -4390,8 +4424,15 @@ function getModeEtItems(){
   return { mode:'annee', items };
 }
 
+// Répartition des opérations COMMUN/DIRIGEANT entre les 4 magasins, au
+// prorata du CA de CHAQUE MOIS concerné (choix validé : plus précis qu'une
+// clé de répartition unique sur toute la période). Si le CA total du mois
+// pour les 4 magasins est nul ou indisponible, aucune part n'est attribuée
+// pour ce mois-là plutôt que de deviner une clé arbitraire — cohérent avec
+// le principe déjà appliqué au tableau de bord (Lot G) : pas de base fiable,
+// pas de chiffre affiché.
 async function computeKpis(magasin, start, end, predicate){
-  const [{data: caRowsRaw}, {data: opRowsRaw}] = await Promise.all([
+  const requetes = [
     sb.from('ca_journalier').select('*')
       .eq('magasin_id', magasin.id)
       .gte('date_operation', start).lte('date_operation', end),
@@ -4399,29 +4440,136 @@ async function computeKpis(magasin, start, end, predicate){
       .eq('affectation', magasin.code)
       .eq('etat', 'valide_manuel')
       .gte('date_operation', start).lte('date_operation', end+'T23:59:59')
-  ]);
-  const rows = (caRowsRaw||[]).filter(r=>predicate(r.date_operation));
+  ];
+  if(ANALYSE_DISPATCH_COMMUN){
+    requetes.push(
+      sb.from('operations_bancaires').select('*, categories:categorie_finale_id(libelle)')
+        .in('affectation', ['COMMUN','DIRIGEANT'])
+        .eq('etat', 'valide_manuel')
+        .gte('date_operation', start).lte('date_operation', end+'T23:59:59')
+    );
+    requetes.push(
+      sb.from('ca_journalier').select('magasin_id, date_operation, ca_ht')
+        .gte('date_operation', start).lte('date_operation', end)
+    );
+  }
+  const resultats = await Promise.all(requetes);
+  const rows = (resultats[0].data||[]).filter(r=>predicate(r.date_operation));
   const caTotal = rows.reduce((s,r)=>s + Number(r.ca_ht||0), 0);
   const tickets = rows.reduce((s,r)=>s + Number(r.nb_tickets||0), 0);
   const panierMoyen = tickets>0 ? caTotal/tickets : null;
 
-  const ops = (opRowsRaw||[]).filter(op=>predicate(op.date_operation));
-  const parCategorie = {};
-  let totalDepenses = 0;
+  const parCategorieDepenses = {};
+  const parCategorieRevenus = {};
+  let totalDepenses = 0, totalRevenus = 0;
+
+  const ops = (resultats[1].data||[]).filter(op=>predicate(op.date_operation));
   ops.forEach(op=>{
-    if(!op.debit) return;
     const lib = op.categories?.libelle || 'Sans catégorie';
-    parCategorie[lib] = (parCategorie[lib]||0) + Number(op.debit);
-    totalDepenses += Number(op.debit);
+    if(op.debit){ parCategorieDepenses[lib] = (parCategorieDepenses[lib]||0) + Number(op.debit); totalDepenses += Number(op.debit); }
+    if(op.credit){ parCategorieRevenus[lib] = (parCategorieRevenus[lib]||0) + Number(op.credit); totalRevenus += Number(op.credit); }
   });
+
+  let dispatchApplique = false;
+  if(ANALYSE_DISPATCH_COMMUN){
+    const communOps = (resultats[2].data||[]).filter(op=>predicate(op.date_operation));
+    const caParMoisEtMagasin = new Map(); // 'YYYY-MM' -> Map(magasin_id -> ca)
+    (resultats[3].data||[]).forEach(r=>{
+      const mois = (r.date_operation||'').slice(0,7);
+      if(!caParMoisEtMagasin.has(mois)) caParMoisEtMagasin.set(mois, new Map());
+      const m = caParMoisEtMagasin.get(mois);
+      m.set(r.magasin_id, (m.get(r.magasin_id)||0) + Number(r.ca_ht||0));
+    });
+
+    communOps.forEach(op=>{
+      const mois = (op.date_operation||'').slice(0,7);
+      const m = caParMoisEtMagasin.get(mois);
+      const totalCaMois = m ? Array.from(m.values()).reduce((s,v)=>s+v,0) : 0;
+      if(totalCaMois<=0) return; // pas de base fiable ce mois-là : aucune part attribuée
+      const poids = (m.get(magasin.id)||0) / totalCaMois;
+      if(poids<=0) return;
+      dispatchApplique = true;
+      const lib = op.categories?.libelle || 'Sans catégorie';
+      if(op.debit){ const part = Number(op.debit)*poids; parCategorieDepenses[lib] = (parCategorieDepenses[lib]||0) + part; totalDepenses += part; }
+      if(op.credit){ const part = Number(op.credit)*poids; parCategorieRevenus[lib] = (parCategorieRevenus[lib]||0) + part; totalRevenus += part; }
+    });
+  }
+
   return {
-    caTotal, tickets, panierMoyen, totalDepenses,
+    caTotal, tickets, panierMoyen, totalDepenses, totalRevenus,
     resultatPartiel: caTotal - totalDepenses,
-    categoriesTriees: Object.entries(parCategorie).sort((a,b)=>b[1]-a[1])
+    dispatchApplique,
+    categoriesTriees: Object.entries(parCategorieDepenses).sort((a,b)=>b[1]-a[1]),
+    categoriesRevenusTriees: Object.entries(parCategorieRevenus).sort((a,b)=>b[1]-a[1])
   };
 }
 
+// ---- Graphique de proportions (dépenses / revenus par catégorie) ----
+// SVG pur (anneau composé de plusieurs arcs via stroke-dasharray), aucune
+// dépendance externe, cohérent avec les sparklines du tableau de bord (Lot G).
+const PALETTE_PROPORTIONS = ['#2f6bff','#ff3ea5','#11153a','#3f7bff','#f4a637','#1c8a4b','#c22b2b','#7ba0ff','#a9c9ff','#9aa0c4'];
+
+function graphiqueDonut(donnees, total, taille){
+  if(total<=0) return '';
+  const rayonExterne = taille/2;
+  const rayonInterne = rayonExterne*0.6;
+  const rayonMoyen = (rayonExterne+rayonInterne)/2;
+  const epaisseur = rayonExterne-rayonInterne;
+  const circonference = 2*Math.PI*rayonMoyen;
+  let cumul = 0;
+  const arcs = donnees.map((d,i)=>{
+    const part = d.valeur/total;
+    const dash = Math.max(part*circonference, 0);
+    const decalage = -cumul*circonference;
+    cumul += part;
+    const couleur = PALETTE_PROPORTIONS[i % PALETTE_PROPORTIONS.length];
+    return `<circle cx="${rayonExterne}" cy="${rayonExterne}" r="${rayonMoyen}" fill="none" stroke="${couleur}" stroke-width="${epaisseur}" stroke-dasharray="${dash.toFixed(2)} ${(circonference-dash).toFixed(2)}" stroke-dashoffset="${decalage.toFixed(2)}" transform="rotate(-90 ${rayonExterne} ${rayonExterne})"/>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${taille} ${taille}" width="${taille}" height="${taille}" aria-hidden="true">${arcs}</svg>`;
+}
+
+function legendeProportions(donnees, total){
+  return donnees.map((d,i)=>{
+    const couleur = PALETTE_PROPORTIONS[i % PALETTE_PROPORTIONS.length];
+    const pct = total>0 ? (d.valeur/total*100) : 0;
+    return `
+      <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:3px 0;">
+        <span style="width:10px;height:10px;border-radius:3px;background:${couleur};flex-shrink:0;"></span>
+        <span style="flex:1;">${escapeHTML(d.label)}</span>
+        <span style="font-weight:700;">${pct.toFixed(1)} %</span>
+      </div>`;
+  }).join('');
+}
+
+// N'affiche rien (plutôt qu'un graphique vide) si aucune donnée n'existe pour
+// cette période — cohérent avec le principe "un bloc disparaît plutôt que
+// d'afficher une information sans valeur" déjà appliqué au tableau de bord.
+function blocProportions(titre, entriesTriees, total){
+  if(!entriesTriees || entriesTriees.length===0 || total<=0) return '';
+  const MAX_CATEGORIES = 7;
+  let donnees = entriesTriees.map(([label,valeur])=>({label, valeur}));
+  if(donnees.length>MAX_CATEGORIES){
+    const tete = donnees.slice(0,MAX_CATEGORIES);
+    const reste = donnees.slice(MAX_CATEGORIES).reduce((s,d)=>s+d.valeur,0);
+    donnees = [...tete, {label:'Autres', valeur:reste}];
+  }
+  return `
+    <div class="card">
+      <div class="kpi-label" style="margin-bottom:12px;">${escapeHTML(titre)}</div>
+      <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;">
+        <div style="flex-shrink:0;">${graphiqueDonut(donnees, total, 150)}</div>
+        <div style="flex:1;min-width:160px;">${legendeProportions(donnees, total)}</div>
+      </div>
+    </div>`;
+}
+
 function kpiCardsHtml(k, magasinNom){
+  const blocDepenses = blocProportions('Dépenses par catégorie', k.categoriesTriees, k.totalDepenses);
+  const blocRevenus = blocProportions('Revenus par catégorie', k.categoriesRevenusTriees, k.totalRevenus);
+  const sectionProportions = (blocDepenses || blocRevenus) ? `
+    <div class="section-title">Proportions dépenses / revenus</div>
+    <div class="grid grid-2">${blocDepenses}${blocRevenus}</div>
+  ` : '';
   return `
     <div class="grid grid-3">
       <div class="card" style="text-align:center;padding:28px 20px;">
@@ -4449,7 +4597,9 @@ function kpiCardsHtml(k, magasinNom){
         <div class="kpi-sub">Hors loyers, salaires, URSSAF (à venir)</div>
       </div>
     </div>
-    <div class="section-title">Dépenses par catégorie (opérations validées uniquement)</div>
+    ${k.dispatchApplique ? `<div class="hint" style="margin-top:10px;">Les montants ci-dessus incluent une part des opérations affectées à COMMUN et DIRIGEANT, répartie au prorata du chiffre d'affaires du mois concerné entre les 4 magasins (Pau, Ibos, Tarbes, Internet).</div>` : ''}
+    ${sectionProportions}
+    <div class="section-title">Dépenses par catégorie (détail)</div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Catégorie</th><th>Montant</th><th>% du CA</th></tr></thead>
@@ -4553,7 +4703,7 @@ async function loadAnalyseData(){
 
   const k = await computeKpis(magasin, start, end, predicate);
   body.innerHTML = kpiCardsHtml(k, magasin.nom) + `
-    <div class="hint" style="margin-top:10px;">Seules les opérations bancaires <b>validées</b> et affectées à ${escapeHTML(magasin.nom)} sont comptées. Les charges communes (COMMUN) ne sont pas incluses tant que la règle de répartition n'est pas configurée.</div>
+    <div class="hint" style="margin-top:10px;">Seules les opérations bancaires <b>validées</b> et affectées à ${escapeHTML(magasin.nom)} sont comptées.${ANALYSE_DISPATCH_COMMUN ? '' : ' Les opérations affectées à COMMUN et DIRIGEANT ne sont pas incluses — cochez « Répartir les charges/produits COMMUN et DIRIGEANT » ci-dessus pour les intégrer au prorata du CA.'}</div>
   `;
 }
 
