@@ -1753,14 +1753,29 @@ function parseMontant(v){
   return isNaN(n) ? null : n;
 }
 
-function matchRegle(libelle){
-  const low = libelle.toLowerCase();
-  for(const r of STATE.regles){
-    if(low.includes(r.mot_cle.toLowerCase())){
-      return r;
-    }
+// Trouve, parmi une liste de règles actives, celle qui correspond le mieux à
+// un libellé. Le mot-clé le PLUS LONG (donc le plus spécifique) l'emporte
+// toujours, quel que soit l'ordre de renvoi de la base — ceci évite qu'un
+// mot-clé générique et court (ex: "vol") ne prenne le pas sur un mot-clé plus
+// précis qui le contient (ex: "envol"), ce qui dépendait auparavant d'un
+// ordre de renvoi arbitraire entre règles de même priorité (toutes les
+// règles créées depuis l'application ont priorite=1 par défaut, donc aucun
+// départage fiable n'existait entre elles). À longueur de mot-clé égale, la
+// colonne "priorite" (plus petite = prioritaire) sert de départage.
+function trouverMeilleureRegle(libelle, regles){
+  const low = (libelle||'').toLowerCase();
+  let meilleure = null;
+  for(const r of regles){
+    if(!low.includes(r.mot_cle.toLowerCase())) continue;
+    if(!meilleure){ meilleure = r; continue; }
+    if(r.mot_cle.length > meilleure.mot_cle.length) meilleure = r;
+    else if(r.mot_cle.length === meilleure.mot_cle.length && (r.priorite ?? 1) < (meilleure.priorite ?? 1)) meilleure = r;
   }
-  return null;
+  return meilleure;
+}
+
+function matchRegle(libelle){
+  return trouverMeilleureRegle(libelle, STATE.regles);
 }
 
 /* ============================================================
@@ -3753,17 +3768,9 @@ async function reappliquerReglesNonValidees(){
   );
   if(!operations || operations.length===0){ toast('Aucune opération à relire.'); return; }
 
-  function trouverRegle(libelle){
-    const low = (libelle||'').toLowerCase();
-    for(const r of regles){
-      if(low.includes(r.mot_cle.toLowerCase())) return r;
-    }
-    return null;
-  }
-
   let miseAJour = 0;
   await Promise.all(operations.map(async (op)=>{
-    const match = trouverRegle(op.libelle);
+    const match = trouverMeilleureRegle(op.libelle, regles);
     if(!match) return;
     const nouvelEtat = match.validation_auto ? 'valide_manuel' : (match.confiance >= 95 ? 'reconnu_auto' : 'a_verifier');
     if(nouvelEtat === op.etat) return; // rien de neuf pour cette ligne
@@ -5784,6 +5791,35 @@ async function executerDiagnostics(){
       statut: doublons>0 ? 'avertissement' : 'ok',
       message: doublons>0 ? `${doublons} combinaison(s) mot-clé/catégorie/affectation en double.` : 'Aucun doublon exact détecté.',
       recommandation: doublons>0 ? 'Aucun changement n\'a été effectué. Ces doublons peuvent être fusionnés manuellement dans Paramètres si besoin.' : null
+    });
+
+    // Détecte les mots-clés courts contenus dans un mot-clé plus long avec une
+    // catégorie différente (ex: "vol" contenu dans "envol") — la source la plus
+    // fréquente de catégorisation automatique incorrecte. Depuis la correction
+    // de trouverMeilleureRegle(), le mot-clé le plus long gagne toujours, mais
+    // ce contrôle reste utile pour repérer les cas à vérifier manuellement.
+    const motsCles = reglesCompletes
+      .map(r => ({ mot: (r.mot_cle||'').trim().toLowerCase(), original: r.mot_cle, categorie_id: r.categorie_id, affectation: (r.affectation||'').toUpperCase() }))
+      .filter(r => r.mot);
+    const chevauchements = new Set();
+    motsCles.forEach(a=>{
+      motsCles.forEach(b=>{
+        if(a.mot===b.mot) return;
+        if(b.mot.includes(a.mot) && (a.categorie_id!==b.categorie_id || a.affectation!==b.affectation)){
+          chevauchements.add(`"${a.original}" ⊂ "${b.original}"`);
+        }
+      });
+    });
+    const listeChevauchements = [...chevauchements];
+    resultats.push({
+      titre: 'Mots-clés de règles qui se chevauchent',
+      statut: listeChevauchements.length>0 ? 'avertissement' : 'ok',
+      message: listeChevauchements.length>0
+        ? `${listeChevauchements.length} chevauchement(s) détecté(s) : un mot-clé est contenu dans un autre, avec une catégorie ou une affectation différente.`
+        : 'Aucun mot-clé actif n\'est contenu dans un autre avec une catégorie ou une affectation différente.',
+      recommandation: listeChevauchements.length>0
+        ? `Exemples : ${listeChevauchements.slice(0,6).join(' · ')}. Aucun changement n'a été effectué. Le mot-clé le plus long l'emporte toujours désormais, mais vérifiez que c'est bien le résultat attendu pour ces règles.`
+        : null
     });
   }
 
