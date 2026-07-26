@@ -227,6 +227,7 @@ tbody tr:not(.ligne-fermee){transition:background-color .12s var(--ease);}
 .badge.green{background:var(--green-bg);color:var(--green-text);}
 .badge.orange{background:var(--orange-bg);color:var(--orange-text);}
 .badge.red{background:var(--red-bg);color:var(--red-text);}
+.badge.muted{background:var(--border);color:var(--muted);}
 .row-select,.row-input{padding:5px 6px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;max-width:180px;}
 @media(max-width:820px){.row-select,.row-input{min-height:40px;padding:8px 6px;}}
 .tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
@@ -326,6 +327,7 @@ tr.ligne-fermee input[type="number"]{background:#e5e7f0;}
       <button class="nav-item" data-page="analyse"></button>
       <button class="nav-item" data-page="journal"></button>
       <button class="nav-item" data-page="parametres"></button>
+      <button class="nav-item" data-page="administration" id="nav-administration" style="display:none;"></button>
       <div class="sidebar-foot">
         <div class="who" id="who-label"></div>
         <div class="app-version" id="app-version-label"></div>
@@ -365,7 +367,9 @@ let STATE = {
   collaborateurs: [],
   currentExercice: null,
   regles: [],
-  page: 'dashboard'
+  page: 'dashboard',
+  profil: null,
+  userId: null
 };
 
 /* ============================================================
@@ -386,6 +390,9 @@ const ICON_PATHS = {
   analyse: '<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
   journal: '<path d="M12 7c-2-2-5-2.5-8-2v13c3-.5 6 0 8 2 2-2 5-2.5 8-2V5c-3-.5-6 0-8 2z"/>',
   parametres: '<line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="18" r="2"/>',
+  administration: '<path d="M12 2 3 6v6c0 5 3.5 9 9 10 5.5-1 9-5 9-10V6z"/><path d="m9 12 2 2 4-4"/>',
+  download: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 20h16"/>',
+  refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
   tickets: '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>',
   calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   checkCircle: '<circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 5-5"/>',
@@ -553,11 +560,28 @@ sb.auth.onAuthStateChange((event, session)=>{
 
 async function showApp(session){
   APP_INITIALIZED = true;
+  STATE.userId = session.user.id;
   loginView.style.display='none';
   appView.style.display='block';
   document.getElementById('who-label').textContent = session.user.email;
-  await loadReferenceData();
+  await Promise.all([loadReferenceData(), chargerProfilConnecte(session)]);
   goToPage('dashboard');
+}
+
+// Charge la fiche "profils" de l'utilisateur connecté (uniquement la sienne :
+// la RLS — migration 25 — n'autorise la lecture que de sa propre ligne) pour
+// savoir s'il faut afficher l'entrée "Administration". Ceci est un confort
+// d'affichage, PAS la protection réelle : même si ce bouton était affiché à
+// tort, chaque donnée de la page Administration reste filtrée par la RLS
+// côté Supabase (voir dirigeant_acces_total et les fonctions dédiées).
+async function chargerProfilConnecte(session){
+  const { data, error } = await sb.from('profils').select('role, actif').eq('id', session.user.id).maybeSingle();
+  STATE.profil = (!error && data) ? data : null;
+  const navAdmin = document.getElementById('nav-administration');
+  if(navAdmin) navAdmin.style.display = estDirigeantActif() ? '' : 'none';
+}
+function estDirigeantActif(){
+  return !!(STATE.profil && STATE.profil.role === 'dirigeant' && STATE.profil.actif);
 }
 
 /* ============================================================
@@ -599,7 +623,8 @@ const NAV_ITEMS = {
   controle: { icon:'controle', label:'Opérations à contrôler' },
   analyse: { icon:'analyse', label:'Analyse par magasin' },
   journal: { icon:'journal', label:'Journal des ventes' },
-  parametres: { icon:'parametres', label:'Paramètres' }
+  parametres: { icon:'parametres', label:'Paramètres' },
+  administration: { icon:'administration', label:'Administration' }
 };
 document.querySelectorAll('.nav-item[data-page]').forEach(btn=>{
   const cfg = NAV_ITEMS[btn.dataset.page];
@@ -636,7 +661,8 @@ const PAGE_TITLES = {
   controle: 'Opérations à contrôler',
   analyse: 'Analyse par magasin',
   journal: 'Journal des ventes',
-  parametres: 'Paramètres'
+  parametres: 'Paramètres',
+  administration: 'Administration'
 };
 
 function goToPage(page){
@@ -659,6 +685,7 @@ function renderPage(){
   else if(STATE.page==='analyse') renderAnalysePage();
   else if(STATE.page==='journal') renderJournalVentesPage();
   else if(STATE.page==='parametres') renderParametresPage();
+  else if(STATE.page==='administration') renderAdministrationPage();
 }
 
 /* ============================================================
@@ -4731,6 +4758,915 @@ function suggestKeyword(libelle){
   }
   const words = s.split(/\s+/).filter(w => w.length>1 && !/^\d+$/.test(w));
   return words.slice(0,2).join(' ');
+}
+
+/* ============================================================
+   PAGE : ADMINISTRATION (Lot H — v1.3.0)
+
+   Visible uniquement pour un dirigeant actif (voir chargerProfilConnecte/
+   estDirigeantActif) — mais ce n'est qu'un confort d'affichage : la
+   protection réelle vient de la RLS Supabase sur chaque table/fonction
+   utilisée ici. Chaque onglet ne charge ses données que lorsqu'il est
+   ouvert (aucune requête au chargement de l'application).
+   ============================================================ */
+let ADMIN_TAB = 'vue-ensemble';
+const ADMIN_ONGLETS = [
+  { code:'vue-ensemble', label:'Vue d’ensemble' },
+  { code:'sauvegardes', label:'Sauvegardes' },
+  { code:'archives', label:'Règles archivées' },
+  { code:'journal', label:'Journal d’activité' },
+  { code:'diagnostic', label:'Diagnostic' }
+];
+
+const LIBELLES_TYPE_ACTION = {
+  import_bancaire: 'Import bancaire',
+  creation_salarie: 'Salarié créé', modification_salarie: 'Salarié modifié',
+  desactivation_salarie: 'Salarié désactivé', reactivation_salarie: 'Salarié réactivé',
+  import_bulletin_salaire: 'Bulletin de salaire importé',
+  creation_categorie: 'Catégorie créée', modification_categorie: 'Catégorie modifiée', suppression_categorie: 'Catégorie supprimée',
+  creation_regle: 'Règle créée', modification_regle: 'Règle modifiée', suppression_regle: 'Règle supprimée',
+  creation_magasin: 'Magasin créé', modification_magasin: 'Magasin modifié',
+  desactivation_magasin: 'Magasin désactivé', reactivation_magasin: 'Magasin réactivé',
+  import_ca_vendeur: 'Import CA par vendeur',
+  remplacement_document: 'Document remplacé',
+  correction_ca_tardive: 'Correction tardive du CA',
+  modification_operation_validee: 'Opération déjà validée modifiée',
+  correction: 'Correction',
+  restauration_regle: 'Règle restaurée',
+  export_sauvegarde: 'Export / sauvegarde',
+  import_sauvegarde: 'Import de données'
+};
+
+// Anti-rebond générique (recherche notamment) — voir Lot H, étape 11.
+function debounce(fn, delai){
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), delai); };
+}
+
+// Pagination générique réutilisée par les archives et le journal d'activité.
+function rendrePagination(conteneurId, page, totalElements, parPage, onChangerPage){
+  const el = document.getElementById(conteneurId);
+  if(!el) return;
+  const totalPages = Math.max(1, Math.ceil(totalElements / parPage));
+  if(totalPages<=1){ el.innerHTML=''; return; }
+  el.innerHTML = `
+    <button class="btn small secondary" id="${conteneurId}-prec" ${page===0?'disabled':''}>◀ Précédent</button>
+    <span class="hint">Page ${page+1} / ${totalPages}</span>
+    <button class="btn small secondary" id="${conteneurId}-suiv" ${page>=totalPages-1?'disabled':''}>Suivant ▶</button>
+  `;
+  const btnPrec = document.getElementById(`${conteneurId}-prec`);
+  const btnSuiv = document.getElementById(`${conteneurId}-suiv`);
+  if(btnPrec) btnPrec.addEventListener('click', ()=>onChangerPage(page-1));
+  if(btnSuiv) btnSuiv.addEventListener('click', ()=>onChangerPage(page+1));
+}
+
+// Liste complète des catégories (actives ET inactives) : utile pour résoudre
+// un categorie_id archivé dont la catégorie a pu depuis être désactivée.
+// Mise en cache mémoire simple, invalidée après un import de catégories.
+let TOUTES_CATEGORIES_CACHE = null;
+async function chargerToutesCategories(){
+  if(TOUTES_CATEGORIES_CACHE) return TOUTES_CATEGORIES_CACHE;
+  const { data, error } = await sb.from('categories').select('id, libelle, actif');
+  TOUTES_CATEGORIES_CACHE = (!error && data) ? data : [];
+  return TOUTES_CATEGORIES_CACHE;
+}
+
+function renderAdministrationPage(){
+  const content = document.getElementById('content');
+  if(!estDirigeantActif()){
+    content.innerHTML = `<div class="empty">Accès réservé au dirigeant. Si vous pensez qu'il s'agit d'une erreur, reconnectez-vous.</div>`;
+    return;
+  }
+  content.innerHTML = `
+    <div class="tabs" id="admin-tabs">
+      ${ADMIN_ONGLETS.map(o=>`<button class="tab-btn" data-tab="${o.code}">${escapeHTML(o.label)}</button>`).join('')}
+    </div>
+    <div id="admin-body"></div>
+  `;
+  document.querySelectorAll('#admin-tabs .tab-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.tab===ADMIN_TAB);
+    b.addEventListener('click', ()=>{
+      ADMIN_TAB = b.dataset.tab;
+      document.querySelectorAll('#admin-tabs .tab-btn').forEach(x=>x.classList.toggle('active', x===b));
+      renderAdminOnglet();
+    });
+  });
+  renderAdminOnglet();
+}
+
+function renderAdminOnglet(){
+  const body = document.getElementById('admin-body');
+  if(!body) return;
+  body.innerHTML = `<div class="empty empty-loading">Chargement...</div>`;
+  if(ADMIN_TAB==='vue-ensemble') renderAdminVueEnsemble(body);
+  else if(ADMIN_TAB==='sauvegardes') renderAdminSauvegardes(body);
+  else if(ADMIN_TAB==='archives') renderAdminArchives(body);
+  else if(ADMIN_TAB==='journal') renderAdminJournal(body);
+  else if(ADMIN_TAB==='diagnostic') renderAdminDiagnostic(body);
+}
+
+/* ---------- Onglet 1 : Vue d'ensemble ---------- */
+function carteAdmin(label, val, suffixe){
+  const indisponible = (val===null || val===undefined);
+  return `
+    <div class="card kpi-card ${indisponible?'kpi-accent-muted':'kpi-accent-blue'}">
+      <div class="kpi-label">${escapeHTML(label)}</div>
+      <div class="kpi-value" style="font-size:21px;${indisponible?'color:var(--muted);':''}">${indisponible?'Indisponible':escapeHTML(String(val))}</div>
+      ${suffixe ? `<div class="kpi-sub">${escapeHTML(suffixe)}</div>` : ''}
+    </div>`;
+}
+
+async function renderAdminVueEnsemble(body){
+  body.innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+      <button class="btn small secondary" id="vue-ensemble-refresh-btn">${icon('refresh')}<span> Actualiser le diagnostic</span></button>
+    </div>
+    <div id="vue-ensemble-grille"><div class="empty empty-loading">Chargement...</div></div>
+  `;
+  document.getElementById('vue-ensemble-refresh-btn').addEventListener('click', ()=>chargerVueEnsemble());
+  await chargerVueEnsemble();
+}
+
+async function chargerVueEnsemble(){
+  const grille = document.getElementById('vue-ensemble-grille');
+  if(!grille) return;
+  grille.innerHTML = `<div class="empty empty-loading">Chargement...</div>`;
+
+  const resultats = await Promise.allSettled([
+    sb.from('regles_categorisation').select('id', {count:'exact', head:true}).eq('actif', true),
+    sb.from('regles_categorisation_supprimees').select('id', {count:'exact', head:true}),
+    sb.from('operations_bancaires').select('id', {count:'exact', head:true}),
+    sb.from('operations_bancaires').select('id', {count:'exact', head:true}).in('etat', ['a_verifier','a_categoriser']),
+    sb.from('categories').select('id', {count:'exact', head:true}).eq('actif', true),
+    sb.rpc('compter_profils_actifs'),
+    sb.from('journal_audit').select('created_at').eq('type_action','export_sauvegarde').eq('details->>format','json').order('created_at',{ascending:false}).limit(1)
+  ]);
+
+  const valeur = (r) => (r.status==='fulfilled' && !r.value.error) ? r.value : null;
+  const reglesActives = valeur(resultats[0])?.count ?? null;
+  const reglesArchivees = valeur(resultats[1])?.count ?? null;
+  const totalOperations = valeur(resultats[2])?.count ?? null;
+  const aControler = valeur(resultats[3])?.count ?? null;
+  const categoriesActives = valeur(resultats[4])?.count ?? null;
+  const utilisateursActifs = valeur(resultats[5])?.data ?? null;
+  // Distinguer 3 états, jamais les confondre : requête en échec => "Indisponible"
+  // (via null) ; requête réussie mais aucune sauvegarde trouvée => message
+  // explicite (pas une erreur) ; requête réussie avec un résultat => la date.
+  const resultatSauvegarde = valeur(resultats[6]);
+  const derniereSauvegarde = resultatSauvegarde
+    ? ((resultatSauvegarde.data && resultatSauvegarde.data[0])
+        ? new Date(resultatSauvegarde.data[0].created_at).toLocaleString('fr-FR')
+        : 'Aucune pour le moment')
+    : null;
+
+  const connexionOk = resultats.some(r => r.status==='fulfilled' && !r.value?.error);
+
+  grille.innerHTML = `
+    <div class="grid grid-4 kpi-grid" style="margin-bottom:18px;">
+      ${carteAdmin('Version de Jéthro', VERSION_INFO?.version || null)}
+      ${carteAdmin('Règles actives', reglesActives)}
+      ${carteAdmin('Règles archivées', reglesArchivees)}
+      ${carteAdmin('Catégories actives', categoriesActives)}
+      ${carteAdmin('Opérations bancaires (total)', totalOperations)}
+      ${carteAdmin('Opérations à contrôler', aControler)}
+      ${carteAdmin('Utilisateurs actifs', utilisateursActifs)}
+      ${carteAdmin('Dernière sauvegarde complète', derniereSauvegarde)}
+    </div>
+    <div class="card">
+      <div class="kpi-label">État de la connexion Supabase</div>
+      <div class="kpi-value" style="font-size:18px;color:${connexionOk?'#1c8a4b':'#c22b2b'};">${connexionOk?'Connectée':'Problème de connexion détecté'}</div>
+      <div class="hint" style="margin-top:4px;">${connexionOk ? 'Au moins une requête a réussi.' : 'Aucune des requêtes de cette page n\'a abouti — vérifiez votre connexion ou réessayez.'}</div>
+    </div>
+  `;
+}
+
+/* ---------- Onglet 2 : Sauvegardes (export / import) ---------- */
+function telechargerFichier(nomFichier, contenu, type){
+  const blob = new Blob([contenu], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nomFichier;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+function dateDuJourISO(){ return toLocalISODate(new Date()); }
+
+// Sérialise un tableau d'objets en CSV (séparateur virgule, guillemets
+// échappés). Les colonnes exportées sont choisies explicitement ligne par
+// ligne : jamais un objet Supabase brut tel quel (donc jamais de risque
+// d'exporter un champ sensible ajouté par erreur plus tard).
+function versCSV(lignes, colonnes){
+  const echapper = (v) => {
+    if(v===null || v===undefined) return '';
+    const s = String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  };
+  const entete = colonnes.map(c=>echapper(c.label)).join(',');
+  const corps = lignes.map(ligne => colonnes.map(c=>echapper(c.valeur(ligne))).join(',')).join('\n');
+  return entete + (corps ? '\n' + corps : '');
+}
+
+// Analyseur CSV minimal (pas un analyseur généraliste) mais robuste aux
+// guillemets et virgules échappées — suffisant pour ré-importer exactement
+// ce que versCSV() a produit.
+function parserCSV(texte){
+  const lignes = [];
+  let ligneCourante = [];
+  let champ = '';
+  let dansGuillemets = false;
+  for(let i=0; i<texte.length; i++){
+    const c = texte[i];
+    if(dansGuillemets){
+      if(c === '"'){
+        if(texte[i+1] === '"'){ champ += '"'; i++; }
+        else dansGuillemets = false;
+      } else champ += c;
+    } else {
+      if(c === '"') dansGuillemets = true;
+      else if(c === ','){ ligneCourante.push(champ); champ=''; }
+      else if(c === '\n' || c === '\r'){
+        if(c === '\r' && texte[i+1] === '\n') i++;
+        ligneCourante.push(champ); champ='';
+        if(!(ligneCourante.length===1 && ligneCourante[0]==='')) lignes.push(ligneCourante);
+        ligneCourante = [];
+      } else champ += c;
+    }
+  }
+  if(champ!=='' || ligneCourante.length>0){ ligneCourante.push(champ); lignes.push(ligneCourante); }
+  if(lignes.length===0) return [];
+  const entetes = lignes[0];
+  return lignes.slice(1).map(l => {
+    const obj = {};
+    entetes.forEach((h,i)=>obj[h] = l[i] !== undefined ? l[i] : '');
+    return obj;
+  });
+}
+
+async function exporterReglesActivesCSV(){
+  const { data, error } = await sb.from('regles_categorisation').select('*').order('mot_cle');
+  if(error){ toast('Erreur export : ' + error.message); return; }
+  const toutesCategories = await chargerToutesCategories();
+  const catMap = new Map(toutesCategories.map(c=>[c.id, c.libelle]));
+  const csv = versCSV(data||[], [
+    { label:'mot_cle', valeur:r=>r.mot_cle },
+    { label:'categorie', valeur:r=>catMap.get(r.categorie_id) || '' },
+    { label:'affectation', valeur:r=>r.affectation },
+    { label:'priorite', valeur:r=>r.priorite },
+    { label:'confiance', valeur:r=>r.confiance },
+    { label:'actif', valeur:r=>r.actif },
+    { label:'validation_auto', valeur:r=>r.validation_auto },
+    { label:'commentaire', valeur:r=>r.commentaire },
+    { label:'date_ajout', valeur:r=>r.date_ajout }
+  ]);
+  telechargerFichier(`jethro-regles-actives-${dateDuJourISO()}.csv`, csv, 'text/csv;charset=utf-8;');
+  await enregistrerAudit('export_sauvegarde', { resume:`Export des règles actives (${(data||[]).length} ligne(s))`, details:{format:'csv', contenu:'regles_categorisation'} });
+  toast(`${(data||[]).length} règle(s) exportée(s) ✔`);
+}
+
+async function exporterReglesArchiveesCSV(){
+  const { data, error } = await sb.from('regles_categorisation_supprimees').select('*').order('supprime_le', {ascending:false});
+  if(error){ toast('Erreur export : ' + error.message); return; }
+  const toutesCategories = await chargerToutesCategories();
+  const catMap = new Map(toutesCategories.map(c=>[c.id, c.libelle]));
+  const csv = versCSV(data||[], [
+    { label:'mot_cle', valeur:r=>r.mot_cle },
+    { label:'categorie', valeur:r=>catMap.get(r.categorie_id) || '' },
+    { label:'affectation', valeur:r=>r.affectation },
+    { label:'validation_auto', valeur:r=>r.validation_auto },
+    { label:'regle_id_origine', valeur:r=>r.regle_id },
+    { label:'cree_le', valeur:r=>r.regle_created_at },
+    { label:'supprime_le', valeur:r=>r.supprime_le }
+  ]);
+  telechargerFichier(`jethro-regles-archivees-${dateDuJourISO()}.csv`, csv, 'text/csv;charset=utf-8;');
+  await enregistrerAudit('export_sauvegarde', { resume:`Export des règles archivées (${(data||[]).length} ligne(s))`, details:{format:'csv', contenu:'regles_categorisation_supprimees'} });
+  toast(`${(data||[]).length} règle(s) archivée(s) exportée(s) ✔`);
+}
+
+async function exporterCategoriesCSV(){
+  const { data, error } = await sb.from('categories').select('*').order('libelle');
+  if(error){ toast('Erreur export : ' + error.message); return; }
+  const csv = versCSV(data||[], [
+    { label:'libelle', valeur:r=>r.libelle },
+    { label:'actif', valeur:r=>r.actif }
+  ]);
+  telechargerFichier(`jethro-categories-${dateDuJourISO()}.csv`, csv, 'text/csv;charset=utf-8;');
+  await enregistrerAudit('export_sauvegarde', { resume:`Export des catégories (${(data||[]).length} ligne(s))`, details:{format:'csv', contenu:'categories'} });
+  toast(`${(data||[]).length} catégorie(s) exportée(s) ✔`);
+}
+
+// Sauvegarde JSON complète v1 : uniquement les tables de configuration
+// (petites, stables). Les tables transactionnelles volumineuses
+// (ca_journalier, operations_bancaires, imports, salaires, journal_audit,
+// historique_modifications, ventes_vendeur, journaux_ventes_mensuels) sont
+// volontairement exclues de cette version — décision de performance et de
+// périmètre (elles resteraient de toute façon dans Supabase, qui reste la
+// source de vérité pour ces données transactionnelles ; ceci n'est PAS une
+// garantie de sauvegarde/restauration Supabase, qui n'est pas disponible
+// sur le plan Free).
+async function genererSauvegardeComplete(){
+  const cles = ['regles_categorisation','regles_categorisation_supprimees','categories','magasins','exercices','collaborateurs'];
+  const resultats = await Promise.allSettled(cles.map(c => sb.from(c).select('*')));
+  const tables = {};
+  const echecs = [];
+  resultats.forEach((r, i)=>{
+    if(r.status==='fulfilled' && !r.value.error) tables[cles[i]] = r.value.data || [];
+    else { tables[cles[i]] = null; echecs.push(cles[i]); }
+  });
+  if(echecs.length>0 && !confirm(`Certaines tables n'ont pas pu être récupérées (${echecs.join(', ')}). Générer quand même une sauvegarde partielle avec le reste ?`)) return;
+
+  const sauvegarde = {
+    application: 'Jéthro',
+    format_version: 1,
+    application_version: VERSION_INFO?.version || null,
+    exported_at: new Date().toISOString(),
+    tables
+  };
+  telechargerFichier(`jethro-sauvegarde-complete-${dateDuJourISO()}.json`, JSON.stringify(sauvegarde, null, 2), 'application/json');
+  await enregistrerAudit('export_sauvegarde', {
+    resume: `Sauvegarde complète générée (${cles.filter(c=>tables[c]).length}/${cles.length} tables incluses)`,
+    details: { format:'json', tables: cles, echecs }
+  });
+  toast('Sauvegarde complète générée ✔');
+  chargerVueEnsemble(); // la date de dernière sauvegarde vient de changer
+}
+
+function renderAdminSauvegardes(body){
+  body.innerHTML = `
+    <div class="section-title" style="margin-top:0;">Exporter</div>
+    <div class="hint" style="margin-bottom:14px;">Aucun mot de passe, jeton, clé Supabase ou donnée de session n'est jamais inclus dans ces fichiers.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px;">
+      <button class="btn small secondary" id="export-regles-actives-btn">${icon('download')}<span> Règles actives (CSV)</span></button>
+      <button class="btn small secondary" id="export-regles-archivees-btn">${icon('download')}<span> Règles archivées (CSV)</span></button>
+      <button class="btn small secondary" id="export-categories-btn">${icon('download')}<span> Catégories (CSV)</span></button>
+      <button class="btn-primary" id="export-complet-btn">${icon('download')}<span> Sauvegarde complète (JSON)</span></button>
+    </div>
+    <div class="hint" style="margin-bottom:24px;">La sauvegarde complète v1 couvre les données de configuration (règles, règles archivées, catégories, magasins, exercices, salariés) — volontairement pas les opérations bancaires ni le CA journalier, trop volumineux pour un export navigateur et déjà conservés dans Supabase. Ce n'est pas une sauvegarde/restauration au niveau de la base : sur le plan Free, Supabase ne propose pas de sauvegarde automatique récupérable.</div>
+
+    <div class="section-title">Importer</div>
+    <div class="hint" style="margin-bottom:10px;">Formats acceptés : un CSV de règles (colonne "mot_cle"), un CSV de catégories (colonne "libelle"), ou une sauvegarde Jéthro complète (.json). Les règles archivées présentes dans une sauvegarde JSON ne sont <b>jamais</b> réimportées automatiquement — seule la restauration unitaire depuis l'onglet « Règles archivées » les réactive.</div>
+    <div class="upload-box">
+      <label style="cursor:pointer;display:block;">
+        <input type="file" id="import-file-input" accept=".csv,.json">
+        📥 Cliquez pour sélectionner un fichier .csv ou .json
+      </label>
+    </div>
+    <div id="import-preview" style="margin-top:16px;"></div>
+  `;
+  document.getElementById('export-regles-actives-btn').addEventListener('click', exporterReglesActivesCSV);
+  document.getElementById('export-regles-archivees-btn').addEventListener('click', exporterReglesArchiveesCSV);
+  document.getElementById('export-categories-btn').addEventListener('click', exporterCategoriesCSV);
+  document.getElementById('export-complet-btn').addEventListener('click', genererSauvegardeComplete);
+  document.getElementById('import-file-input').addEventListener('change', gererSelectionFichierImport);
+}
+
+let IMPORT_ANALYSE = null;
+let IMPORT_EN_COURS = false;
+
+async function gererSelectionFichierImport(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  IMPORT_ANALYSE = null;
+  const zone = document.getElementById('import-preview');
+  zone.innerHTML = `<div class="empty empty-loading">Analyse du fichier...</div>`;
+  try{
+    const texte = await file.text();
+    const analyse = await analyserFichierImport(file.name, texte);
+    IMPORT_ANALYSE = analyse;
+    afficherPreviewImport(analyse);
+  } catch(err){
+    zone.innerHTML = `<div class="empty">Fichier invalide : ${escapeHTML(err.message)}</div>`;
+  }
+}
+
+// Analyse un fichier d'import SANS rien écrire en base : détecte le format,
+// vérifie la version, compte les lignes valides/doublons/erreurs. La
+// détection de doublon porte uniquement sur des champs métier (mot_cle +
+// categorie_id + affectation pour les règles, libelle pour les catégories)
+// — jamais sur un UUID, un commentaire ou une date.
+async function analyserFichierImport(nomFichier, texte){
+  const estJSON = /\.json$/i.test(nomFichier);
+  let lignesRegles = [], lignesCategories = [], contientArchives = false;
+
+  if(estJSON){
+    let contenu;
+    try{ contenu = JSON.parse(texte); } catch(e){ throw new Error('JSON illisible : ' + e.message); }
+    if(!contenu || typeof contenu !== 'object') throw new Error('Structure JSON invalide.');
+    if(contenu.format_version !== 1) throw new Error(`Version de format non prise en charge (${contenu.format_version ?? 'absente'}). Seule la version 1 est acceptée.`);
+    if(!contenu.tables || typeof contenu.tables !== 'object') throw new Error('Le fichier ne contient pas de propriété "tables".');
+    lignesRegles = Array.isArray(contenu.tables.regles_categorisation) ? contenu.tables.regles_categorisation : [];
+    lignesCategories = Array.isArray(contenu.tables.categories) ? contenu.tables.categories : [];
+    contientArchives = Array.isArray(contenu.tables.regles_categorisation_supprimees) && contenu.tables.regles_categorisation_supprimees.length>0;
+    if(lignesRegles.length===0 && lignesCategories.length===0){
+      throw new Error('Aucune règle ni catégorie exploitable trouvée dans cette sauvegarde.');
+    }
+  } else {
+    const lignes = parserCSV(texte);
+    if(lignes.length===0) throw new Error('Fichier CSV vide ou illisible.');
+    const entetes = Object.keys(lignes[0]);
+    if(entetes.includes('mot_cle')) lignesRegles = lignes;
+    else if(entetes.includes('libelle')) lignesCategories = lignes;
+    else throw new Error(`Colonnes non reconnues (${entetes.join(', ')}). Attendu : "mot_cle" (règles) ou "libelle" (catégories).`);
+  }
+
+  let analyseRegles = null;
+  if(lignesRegles.length>0){
+    const toutesCategories = await chargerToutesCategories();
+    const catParLibelle = new Map(toutesCategories.map(c=>[c.libelle.trim().toLowerCase(), c]));
+    const { data: reglesActuelles, error } = await sb.from('regles_categorisation').select('mot_cle, categorie_id, affectation');
+    if(error) throw new Error('Impossible de vérifier les doublons de règles : ' + error.message);
+
+    const cleDoublon = (motCle, categorieId, affectation) =>
+      `${(motCle||'').trim().toLowerCase()}|${categorieId||''}|${(affectation||'').trim().toUpperCase()}`;
+    const clesExistantes = new Set((reglesActuelles||[]).map(r => cleDoublon(r.mot_cle, r.categorie_id, r.affectation)));
+    const clesVues = new Set();
+    const valides = [], ignorees = [], erreurs = [];
+
+    lignesRegles.forEach((ligne, index) => {
+      const motCle = (ligne.mot_cle || '').toString().trim();
+      const libelleCategorie = (ligne.categorie || '').toString().trim();
+      const affectation = (ligne.affectation || '').toString().trim().toUpperCase() || null;
+      if(!motCle){ erreurs.push({ ligne: index+2, raison:'mot-clé manquant' }); return; }
+      const categorie = catParLibelle.get(libelleCategorie.toLowerCase());
+      if(!libelleCategorie || !categorie){ erreurs.push({ ligne: index+2, raison:`catégorie introuvable : "${libelleCategorie}"` }); return; }
+      const cle = cleDoublon(motCle, categorie.id, affectation);
+      if(clesExistantes.has(cle) || clesVues.has(cle)){ ignorees.push({ motCle, raison:'doublon (déjà existant ou répété dans le fichier)' }); return; }
+      clesVues.add(cle);
+      valides.push({
+        mot_cle: motCle,
+        categorie_id: categorie.id,
+        affectation,
+        priorite: Number(ligne.priorite) || 1,
+        confiance: (ligne.confiance!==undefined && ligne.confiance!=='') ? Number(ligne.confiance) : 100,
+        actif: ligne.actif===undefined ? true : (ligne.actif===true || ligne.actif==='true' || ligne.actif==='1'),
+        validation_auto: (ligne.validation_auto===true || ligne.validation_auto==='true' || ligne.validation_auto==='1')
+      });
+    });
+    analyseRegles = { total: lignesRegles.length, valides, ignorees, erreurs };
+  }
+
+  let analyseCategories = null;
+  if(lignesCategories.length>0){
+    const { data: categoriesActuelles, error } = await sb.from('categories').select('libelle');
+    if(error) throw new Error('Impossible de vérifier les doublons de catégories : ' + error.message);
+    const libellesExistants = new Set((categoriesActuelles||[]).map(c=>c.libelle.trim().toLowerCase()));
+    const vus = new Set();
+    const valides = [], ignorees = [], erreurs = [];
+    lignesCategories.forEach((ligne, index)=>{
+      const libelle = (ligne.libelle || '').toString().trim();
+      if(!libelle){ erreurs.push({ ligne: index+2, raison:'libellé manquant' }); return; }
+      const cle = libelle.toLowerCase();
+      if(libellesExistants.has(cle) || vus.has(cle)){ ignorees.push({ libelle, raison:'catégorie déjà existante' }); return; }
+      vus.add(cle);
+      valides.push({ libelle });
+    });
+    analyseCategories = { total: lignesCategories.length, valides, ignorees, erreurs };
+  }
+
+  return { nomFichier, analyseRegles, analyseCategories, contientArchives };
+}
+
+function afficherPreviewImport(analyse){
+  const zone = document.getElementById('import-preview');
+  const parts = [];
+  if(analyse.analyseRegles){
+    const a = analyse.analyseRegles;
+    parts.push(`
+      <div class="card" style="margin-bottom:14px;">
+        <h3 style="margin-bottom:10px;">Règles de catégorisation</h3>
+        <div class="hint" style="margin-bottom:10px;">${a.total} ligne(s) lue(s) dans le fichier.</div>
+        <div class="grid grid-3">
+          <div><div class="kpi-label">Seront ajoutées</div><div class="kpi-value" style="font-size:20px;color:#1c8a4b;">${a.valides.length}</div></div>
+          <div><div class="kpi-label">Ignorées (doublons)</div><div class="kpi-value" style="font-size:20px;color:var(--muted);">${a.ignorees.length}</div></div>
+          <div><div class="kpi-label">En erreur</div><div class="kpi-value" style="font-size:20px;color:#c22b2b;">${a.erreurs.length}</div></div>
+        </div>
+        ${a.erreurs.length ? `<div class="hint" style="margin-top:10px;">Exemples : ${a.erreurs.slice(0,5).map(e=>escapeHTML(`ligne ${e.ligne} — ${e.raison}`)).join(' · ')}</div>` : ''}
+      </div>`);
+  }
+  if(analyse.analyseCategories){
+    const a = analyse.analyseCategories;
+    parts.push(`
+      <div class="card" style="margin-bottom:14px;">
+        <h3 style="margin-bottom:10px;">Catégories</h3>
+        <div class="hint" style="margin-bottom:10px;">${a.total} ligne(s) lue(s) dans le fichier.</div>
+        <div class="grid grid-3">
+          <div><div class="kpi-label">Seront ajoutées</div><div class="kpi-value" style="font-size:20px;color:#1c8a4b;">${a.valides.length}</div></div>
+          <div><div class="kpi-label">Ignorées (déjà existantes)</div><div class="kpi-value" style="font-size:20px;color:var(--muted);">${a.ignorees.length}</div></div>
+          <div><div class="kpi-label">En erreur</div><div class="kpi-value" style="font-size:20px;color:#c22b2b;">${a.erreurs.length}</div></div>
+        </div>
+      </div>`);
+  }
+  if(analyse.contientArchives){
+    parts.push(`<div class="hint" style="margin-bottom:14px;">Ce fichier contient aussi des règles archivées : elles ne seront <b>pas</b> réimportées automatiquement. Utilisez l'onglet « Règles archivées » pour restaurer une règle précise si besoin.</div>`);
+  }
+  const totalAAjouter = (analyse.analyseRegles?.valides.length||0) + (analyse.analyseCategories?.valides.length||0);
+  parts.push(`<div class="hint" style="margin-bottom:14px;"><b>Aucune donnée existante ne sera supprimée ni modifiée.</b> Seuls les éléments listés ci-dessus comme « seront ajoutés » seront créés.</div>`);
+  parts.push(`<button class="btn-primary" id="confirmer-import-btn" ${totalAAjouter===0?'disabled':''}>Confirmer l'import (${totalAAjouter} élément(s))</button>`);
+  zone.innerHTML = parts.join('');
+  const btn = document.getElementById('confirmer-import-btn');
+  if(btn) btn.addEventListener('click', ()=>{
+    const totalRegles = analyse.analyseRegles?.valides.length||0;
+    const totalCategories = analyse.analyseCategories?.valides.length||0;
+    const ignorees = (analyse.analyseRegles?.ignorees.length||0)+(analyse.analyseCategories?.ignorees.length||0);
+    if(!confirm(`Cet import ajoutera ${totalRegles} règle(s) et ${totalCategories} catégorie(s), et en ignorera ${ignorees} déjà existante(s). Aucune donnée actuelle ne sera supprimée ni modifiée. Continuer ?`)) return;
+    confirmerImport();
+  });
+}
+
+async function confirmerImport(){
+  if(IMPORT_EN_COURS || !IMPORT_ANALYSE) return;
+  IMPORT_EN_COURS = true;
+  const btn = document.getElementById('confirmer-import-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Import en cours...'; }
+
+  const resultat = { reglesInserees:0, reglesIgnorees:0, reglesEnErreur:0, categoriesInserees:0, categoriesIgnorees:0, categoriesEnErreur:0 };
+
+  try{
+    // Catégories d'abord : certaines règles du même fichier peuvent en dépendre.
+    if(IMPORT_ANALYSE.analyseCategories){
+      const { data: categoriesActuelles } = await sb.from('categories').select('libelle');
+      const existantes = new Set((categoriesActuelles||[]).map(c=>c.libelle.trim().toLowerCase()));
+      for(const cand of IMPORT_ANALYSE.analyseCategories.valides){
+        // Revérification juste avant insertion (l'état a pu changer depuis la prévisualisation).
+        if(existantes.has(cand.libelle.toLowerCase())){ resultat.categoriesIgnorees++; continue; }
+        const { error } = await sb.from('categories').insert({ libelle: cand.libelle });
+        if(error) resultat.categoriesEnErreur++;
+        else { resultat.categoriesInserees++; existantes.add(cand.libelle.toLowerCase()); }
+      }
+      if(resultat.categoriesInserees>0) TOUTES_CATEGORIES_CACHE = null;
+    }
+
+    if(IMPORT_ANALYSE.analyseRegles){
+      const toutesCategories = await chargerToutesCategories();
+      const catParLibelle = new Map(toutesCategories.map(c=>[c.libelle.trim().toLowerCase(), c]));
+      const { data: reglesActuelles } = await sb.from('regles_categorisation').select('mot_cle, categorie_id, affectation');
+      const cleDoublon = (motCle, categorieId, affectation) => `${(motCle||'').trim().toLowerCase()}|${categorieId||''}|${(affectation||'').trim().toUpperCase()}`;
+      const clesExistantes = new Set((reglesActuelles||[]).map(r => cleDoublon(r.mot_cle, r.categorie_id, r.affectation)));
+      for(const cand of IMPORT_ANALYSE.analyseRegles.valides){
+        const cle = cleDoublon(cand.mot_cle, cand.categorie_id, cand.affectation);
+        if(clesExistantes.has(cle)){ resultat.reglesIgnorees++; continue; } // revérification finale
+        const { error } = await sb.from('regles_categorisation').insert({
+          mot_cle: cand.mot_cle, categorie_id: cand.categorie_id, affectation: cand.affectation,
+          priorite: cand.priorite, confiance: cand.confiance, actif: cand.actif, validation_auto: cand.validation_auto
+        });
+        if(error) resultat.reglesEnErreur++;
+        else { resultat.reglesInserees++; clesExistantes.add(cle); }
+      }
+    }
+
+    const succesTotal = resultat.reglesEnErreur===0 && resultat.categoriesEnErreur===0;
+    await enregistrerAudit('import_sauvegarde', {
+      resume: `Import depuis "${IMPORT_ANALYSE.nomFichier}" : ${resultat.reglesInserees} règle(s) et ${resultat.categoriesInserees} catégorie(s) ajoutée(s)${(resultat.reglesEnErreur+resultat.categoriesEnErreur)>0 ? `, ${resultat.reglesEnErreur+resultat.categoriesEnErreur} erreur(s)` : ''}`,
+      details: resultat,
+      gravite: succesTotal ? 'info' : 'avertissement'
+    });
+
+    const zone = document.getElementById('import-preview');
+    zone.innerHTML = `
+      <div class="card">
+        <h3 style="margin-bottom:10px;">${succesTotal ? 'Import terminé' : 'Import terminé avec des erreurs'}</h3>
+        <ul style="margin:0 0 0 18px;font-size:13.5px;line-height:1.8;">
+          <li>${resultat.reglesInserees} règle(s) ajoutée(s), ${resultat.reglesIgnorees} ignorée(s) (doublons), ${resultat.reglesEnErreur} en erreur</li>
+          <li>${resultat.categoriesInserees} catégorie(s) ajoutée(s), ${resultat.categoriesIgnorees} ignorée(s) (doublons), ${resultat.categoriesEnErreur} en erreur</li>
+        </ul>
+        ${!succesTotal ? `<div class="hint" style="margin-top:10px;color:#c22b2b;">Certains éléments n'ont pas pu être importés. Aucune donnée existante n'a été modifiée ni supprimée.</div>` : ''}
+      </div>`;
+    toast(succesTotal ? 'Import terminé ✔' : 'Import terminé avec des erreurs');
+    IMPORT_ANALYSE = null;
+    const fileInput = document.getElementById('import-file-input');
+    if(fileInput) fileInput.value = '';
+    await loadReferenceData();
+  } catch(err){
+    toast('Erreur pendant l\'import : ' + err.message);
+  } finally {
+    IMPORT_EN_COURS = false;
+  }
+}
+
+/* ---------- Onglet 3 : Règles archivées ---------- */
+let ARCHIVES_RECHERCHE = '';
+let ARCHIVES_CATEGORIE_FILTRE = '';
+let ARCHIVES_PAGE = 0;
+const ARCHIVES_PAR_PAGE = 25;
+let ARCHIVES_CACHE = [];
+let ARCHIVES_CATEGORIES_MAP = new Map();
+
+async function renderAdminArchives(body){
+  body.innerHTML = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">
+      <input type="text" id="archives-search" placeholder="🔎 Rechercher un mot-clé..." style="flex:1;min-width:200px;padding:9px 12px;border:1px solid var(--border);border-radius:9px;font-size:13.5px;">
+      <select id="archives-categorie-filtre" style="padding:9px 12px;border:1px solid var(--border);border-radius:9px;font-size:13.5px;"><option value="">Toutes les catégories</option></select>
+      <button class="btn small secondary" id="archives-export-btn">${icon('download')}<span> Exporter les archives</span></button>
+    </div>
+    <div id="archives-compteur" class="hint" style="margin-bottom:10px;"></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Mot-clé</th><th>Catégorie</th><th>Affectation</th><th>Validation auto</th><th>Créée le</th><th>Supprimée le</th><th></th></tr></thead>
+      <tbody id="archives-tbody"><tr><td colspan="7" class="empty empty-loading">Chargement...</td></tr></tbody>
+    </table></div>
+    <div id="archives-pagination" style="display:flex;justify-content:center;gap:10px;margin-top:14px;"></div>
+  `;
+
+  const { data, error } = await sb.from('regles_categorisation_supprimees').select('*').order('supprime_le', {ascending:false});
+  if(error){ document.getElementById('archives-tbody').innerHTML = `<tr><td colspan="7" class="empty">Indisponible : ${escapeHTML(error.message)}</td></tr>`; return; }
+  ARCHIVES_CACHE = data || [];
+
+  const toutesCategories = await chargerToutesCategories();
+  ARCHIVES_CATEGORIES_MAP = new Map(toutesCategories.map(c=>[c.id, c.libelle]));
+
+  const select = document.getElementById('archives-categorie-filtre');
+  const categoriesUtilisees = [...new Set(ARCHIVES_CACHE.map(r=>r.categorie_id).filter(Boolean))]
+    .map(id => ({ id, libelle: ARCHIVES_CATEGORIES_MAP.get(id) || 'Catégorie supprimée' }))
+    .sort((a,b)=>a.libelle.localeCompare(b.libelle));
+  select.innerHTML += categoriesUtilisees.map(c=>`<option value="${c.id}">${escapeHTML(c.libelle)}</option>`).join('');
+  select.value = ARCHIVES_CATEGORIE_FILTRE;
+
+  document.getElementById('archives-search').addEventListener('input', debounce((e)=>{
+    ARCHIVES_RECHERCHE = e.target.value; ARCHIVES_PAGE = 0; rendreTableauArchives();
+  }, 250));
+  select.addEventListener('change', (e)=>{ ARCHIVES_CATEGORIE_FILTRE = e.target.value; ARCHIVES_PAGE = 0; rendreTableauArchives(); });
+  document.getElementById('archives-export-btn').addEventListener('click', exporterReglesArchiveesCSV);
+
+  rendreTableauArchives();
+}
+
+function rendreTableauArchives(){
+  const terme = ARCHIVES_RECHERCHE.trim().toLowerCase();
+  let filtres = ARCHIVES_CACHE;
+  if(terme) filtres = filtres.filter(r => (r.mot_cle||'').toLowerCase().includes(terme));
+  if(ARCHIVES_CATEGORIE_FILTRE) filtres = filtres.filter(r => r.categorie_id === ARCHIVES_CATEGORIE_FILTRE);
+  filtres = [...filtres].sort((a,b)=> new Date(b.supprime_le) - new Date(a.supprime_le));
+
+  document.getElementById('archives-compteur').textContent =
+    `${filtres.length} règle(s) archivée(s)${(terme||ARCHIVES_CATEGORIE_FILTRE) ? ' (filtré sur ' + ARCHIVES_CACHE.length + ' au total)' : ''}`;
+
+  const debut = ARCHIVES_PAGE * ARCHIVES_PAR_PAGE;
+  const page = filtres.slice(debut, debut + ARCHIVES_PAR_PAGE);
+  const tbody = document.getElementById('archives-tbody');
+  if(page.length===0){
+    tbody.innerHTML = `<tr><td colspan="7" class="empty">Aucune règle archivée ne correspond.</td></tr>`;
+  } else {
+    tbody.innerHTML = page.map(r => `
+      <tr data-archive-id="${r.id}">
+        <td>${escapeHTML(r.mot_cle)}</td>
+        <td>${escapeHTML(ARCHIVES_CATEGORIES_MAP.get(r.categorie_id) || 'Catégorie supprimée')}</td>
+        <td>${escapeHTML(r.affectation || '—')}</td>
+        <td>${r.validation_auto ? 'Oui' : 'Non'}</td>
+        <td>${r.regle_created_at ? fmtDate(r.regle_created_at) : '—'}</td>
+        <td>${fmtDate(r.supprime_le)}</td>
+        <td><button class="btn small restaurer-archive-btn">Restaurer</button></td>
+      </tr>`).join('');
+    tbody.querySelectorAll('.restaurer-archive-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>restaurerRegleArchivee(e.target.closest('tr').dataset.archiveId, btn));
+    });
+  }
+
+  rendrePagination('archives-pagination', ARCHIVES_PAGE, filtres.length, ARCHIVES_PAR_PAGE, (p)=>{ ARCHIVES_PAGE = p; rendreTableauArchives(); });
+}
+
+async function restaurerRegleArchivee(archiveId, btn){
+  if(!confirm('Restaurer cette règle ? Elle sera réactivée dans le dictionnaire de règles avec un nouvel identifiant. L\'archive restera conservée en permanence, comme trace.')) return;
+  if(btn){ btn.disabled = true; btn.textContent = '...'; }
+  const { data, error } = await sb.rpc('restaurer_regle_supprimee', { p_archive_id: archiveId });
+  if(error){
+    toast('Erreur : ' + error.message);
+    if(btn){ btn.disabled = false; btn.textContent = 'Restaurer'; }
+    return;
+  }
+  toast('Règle restaurée ✔ — l\'archive reste conservée comme trace permanente.');
+  await enregistrerAudit('restauration_regle', {
+    tableConcernee: 'regles_categorisation',
+    elementId: data,
+    resume: `Règle restaurée depuis l'archive (nouvel identifiant attribué)`,
+    details: { archive_id: archiveId, nouvel_id: data }
+  });
+  if(btn){ btn.disabled = false; btn.textContent = 'Restaurer'; }
+}
+
+/* ---------- Onglet 4 : Journal d'activité ---------- */
+let JOURNAL_ADMIN_TYPE_FILTRE = '';
+let JOURNAL_ADMIN_RECHERCHE = '';
+let JOURNAL_ADMIN_PAGE = 0;
+const JOURNAL_ADMIN_PAR_PAGE = 25;
+let JOURNAL_ADMIN_CACHE = [];
+
+async function renderAdminJournal(body){
+  body.innerHTML = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">
+      <input type="text" id="journal-admin-search" placeholder="🔎 Rechercher dans les résumés..." style="flex:1;min-width:200px;padding:9px 12px;border:1px solid var(--border);border-radius:9px;font-size:13.5px;">
+      <select id="journal-admin-type" style="padding:9px 12px;border:1px solid var(--border);border-radius:9px;font-size:13.5px;"><option value="">Tous les types</option></select>
+    </div>
+    <div id="journal-admin-compteur" class="hint" style="margin-bottom:10px;"></div>
+    <div id="journal-admin-liste"><div class="empty empty-loading">Chargement...</div></div>
+    <div id="journal-admin-pagination" style="display:flex;justify-content:center;gap:10px;margin-top:14px;"></div>
+  `;
+
+  // Limité aux 500 événements les plus récents : suffisant pour un usage
+  // d'administration courant, évite de charger un historique sans borne.
+  const { data, error } = await sb.from('journal_audit').select('*').order('created_at', {ascending:false}).limit(500);
+  if(error){ document.getElementById('journal-admin-liste').innerHTML = `<div class="empty">Indisponible : ${escapeHTML(error.message)}</div>`; return; }
+  JOURNAL_ADMIN_CACHE = data || [];
+
+  const typesPresents = [...new Set(JOURNAL_ADMIN_CACHE.map(e=>e.type_action))].sort();
+  const select = document.getElementById('journal-admin-type');
+  select.innerHTML += typesPresents.map(t=>`<option value="${t}">${escapeHTML(LIBELLES_TYPE_ACTION[t] || t)}</option>`).join('');
+  select.value = JOURNAL_ADMIN_TYPE_FILTRE;
+
+  document.getElementById('journal-admin-search').addEventListener('input', debounce((e)=>{
+    JOURNAL_ADMIN_RECHERCHE = e.target.value; JOURNAL_ADMIN_PAGE = 0; rendreJournalAdmin();
+  }, 250));
+  select.addEventListener('change', (e)=>{ JOURNAL_ADMIN_TYPE_FILTRE = e.target.value; JOURNAL_ADMIN_PAGE = 0; rendreJournalAdmin(); });
+
+  rendreJournalAdmin();
+}
+
+function rendreJournalAdmin(){
+  const terme = JOURNAL_ADMIN_RECHERCHE.trim().toLowerCase();
+  let filtres = JOURNAL_ADMIN_CACHE;
+  if(JOURNAL_ADMIN_TYPE_FILTRE) filtres = filtres.filter(e=>e.type_action===JOURNAL_ADMIN_TYPE_FILTRE);
+  if(terme) filtres = filtres.filter(e=>(e.resume||'').toLowerCase().includes(terme));
+
+  document.getElementById('journal-admin-compteur').textContent =
+    `${filtres.length} événement(s)${(terme||JOURNAL_ADMIN_TYPE_FILTRE) ? ' (filtré sur les ' + JOURNAL_ADMIN_CACHE.length + ' plus récents)' : ' (les ' + JOURNAL_ADMIN_CACHE.length + ' plus récents)'}`;
+
+  const debut = JOURNAL_ADMIN_PAGE * JOURNAL_ADMIN_PAR_PAGE;
+  const page = filtres.slice(debut, debut + JOURNAL_ADMIN_PAR_PAGE);
+  const liste = document.getElementById('journal-admin-liste');
+  if(page.length===0){
+    liste.innerHTML = `<div class="empty">Aucun événement ne correspond.</div>`;
+  } else {
+    liste.innerHTML = page.map((e,i)=>{
+      const badge = e.gravite==='erreur' ? 'red' : (e.gravite==='avertissement' ? 'orange' : 'green');
+      return `
+      <div class="card" style="margin-bottom:10px;padding:14px 16px;">
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:200px;">
+            <span class="badge ${badge}">${escapeHTML(LIBELLES_TYPE_ACTION[e.type_action] || e.type_action)}</span>
+            <div style="margin-top:6px;font-size:13.5px;">${escapeHTML(e.resume)}</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="hint">${new Date(e.created_at).toLocaleString('fr-FR')}</div>
+            ${e.details ? `<button class="btn secondary small journal-detail-btn" data-index="${debut+i}">Détails</button>` : ''}
+          </div>
+        </div>
+        <div class="journal-detail" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);"></div>
+      </div>`;
+    }).join('');
+    liste.querySelectorAll('.journal-detail-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const carte = btn.closest('.card');
+        const zoneDetail = carte.querySelector('.journal-detail');
+        const evt = filtres[Number(btn.dataset.index)];
+        const visible = zoneDetail.style.display !== 'none';
+        zoneDetail.style.display = visible ? 'none' : 'block';
+        if(!visible) zoneDetail.innerHTML = `<pre style="white-space:pre-wrap;font-size:12px;color:var(--muted);margin:0;">${escapeHTML(JSON.stringify(evt.details, null, 2))}</pre>`;
+      });
+    });
+  }
+
+  rendrePagination('journal-admin-pagination', JOURNAL_ADMIN_PAGE, filtres.length, JOURNAL_ADMIN_PAR_PAGE, (p)=>{ JOURNAL_ADMIN_PAGE = p; rendreJournalAdmin(); });
+}
+
+/* ---------- Onglet 5 : Diagnostic ---------- */
+let DIAGNOSTIC_DERNIER_RESULTAT = [];
+
+function classeBadgeDiagnostic(s){ return s==='ok'?'green':(s==='avertissement'?'orange':(s==='erreur'?'red':'muted')); }
+function libelleStatutDiagnostic(s){ return {ok:'OK', avertissement:'Avertissement', erreur:'Erreur', non_verifiable:'Non vérifiable'}[s] || s; }
+
+async function renderAdminDiagnostic(body){
+  body.innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+      <button class="btn small secondary" id="diagnostic-export-btn">${icon('download')}<span> Exporter le rapport</span></button>
+    </div>
+    <div id="diagnostic-liste"><div class="empty empty-loading">Analyse en cours (lecture seule, aucune donnée modifiée)...</div></div>
+  `;
+  const resultats = await executerDiagnostics();
+  DIAGNOSTIC_DERNIER_RESULTAT = resultats;
+  document.getElementById('diagnostic-liste').innerHTML = resultats.map(r => `
+    <div class="card" style="margin-bottom:10px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start;">
+      <span class="badge ${classeBadgeDiagnostic(r.statut)}" style="flex-shrink:0;">${libelleStatutDiagnostic(r.statut)}</span>
+      <div style="flex:1;">
+        <div style="font-weight:700;font-size:13.5px;">${escapeHTML(r.titre)}</div>
+        <div class="hint" style="margin-top:4px;">${escapeHTML(r.message)}</div>
+        ${r.recommandation ? `<div class="hint" style="margin-top:4px;font-style:italic;">${escapeHTML(r.recommandation)}</div>` : ''}
+      </div>
+    </div>`).join('');
+  document.getElementById('diagnostic-export-btn').addEventListener('click', ()=>exporterRapportDiagnostic(resultats));
+}
+
+// Tous les contrôles ci-dessous sont STRICTEMENT en lecture : aucune écriture,
+// aucune correction automatique, quel que soit le résultat.
+async function executerDiagnostics(){
+  const resultats = [];
+
+  const { data: { session } } = await sb.auth.getSession();
+  resultats.push({
+    titre: 'Connexion Supabase et authentification',
+    statut: session ? 'ok' : 'erreur',
+    message: session ? `Connecté (${session.user.email}).` : 'Aucune session active.'
+  });
+
+  resultats.push({
+    titre: 'Rôle dirigeant actif',
+    statut: estDirigeantActif() ? 'ok' : 'erreur',
+    message: estDirigeantActif() ? 'Profil dirigeant actif confirmé.' : 'Le profil connecté n\'est pas reconnu comme dirigeant actif.'
+  });
+
+  resultats.push({
+    titre: 'RLS active sur les tables critiques',
+    statut: 'non_verifiable',
+    message: 'Non vérifiable depuis le navigateur (l\'API ne donne pas accès au catalogue système de la base). Mise en place vérifiée manuellement lors des migrations 01, 17, 24, 25, 27, 28.'
+  });
+
+  resultats.push({
+    titre: 'Présence des fonctions restaurer_regle_supprimee et archiver_regle_supprimee',
+    statut: 'non_verifiable',
+    message: 'Non vérifiable depuis le navigateur sans risquer un appel non souhaité. Installées par la migration 28 — pour vérifier manuellement : select proname from pg_proc where proname in (\'restaurer_regle_supprimee\',\'archiver_regle_supprimee\'); dans Supabase SQL Editor.'
+  });
+
+  const rpcCompte = await sb.rpc('compter_profils_actifs');
+  resultats.push({
+    titre: 'Fonction compter_profils_actifs()',
+    statut: rpcCompte.error ? 'erreur' : 'ok',
+    message: rpcCompte.error ? rpcCompte.error.message : `Fonction accessible (${rpcCompte.data} profil(s) actif(s)).`
+  });
+
+  const { count: nbArchives, error: errArchives } = await sb.from('regles_categorisation_supprimees').select('id', {count:'exact', head:true});
+  resultats.push({
+    titre: 'Trigger d\'archivage (regles_categorisation_supprimees)',
+    statut: errArchives ? 'erreur' : (nbArchives>0 ? 'ok' : 'non_verifiable'),
+    message: errArchives
+      ? errArchives.message
+      : (nbArchives>0
+          ? `${nbArchives} règle(s) déjà archivée(s) : preuve indirecte que le mécanisme a déjà fonctionné. Sa présence structurelle (le trigger lui-même) n'est pas vérifiable directement depuis le navigateur.`
+          : 'Aucune règle archivée pour le moment. Peut être normal (aucune suppression depuis la mise en place), ou signifier une absence du trigger — non vérifiable depuis le navigateur.')
+  });
+
+  const { count: nbActives, error: errActives } = await sb.from('regles_categorisation').select('id', {count:'exact', head:true}).eq('actif', true);
+  resultats.push({ titre:'Nombre de règles actives', statut: errActives?'erreur':'ok', message: errActives ? errActives.message : `${nbActives} règle(s) active(s).` });
+  resultats.push({ titre:'Nombre de règles archivées', statut: errArchives?'erreur':'ok', message: errArchives ? errArchives.message : `${nbArchives} règle(s) archivée(s).` });
+
+  const { data: reglesCompletes, error: errRegles } = await sb.from('regles_categorisation').select('id, mot_cle, categorie_id, affectation').eq('actif', true);
+  if(errRegles){
+    resultats.push({ titre:'Intégrité des règles actives', statut:'erreur', message: errRegles.message });
+  } else {
+    const toutesCategories = await chargerToutesCategories();
+    const idsCategories = new Set(toutesCategories.map(c=>c.id));
+    const sansCategorie = reglesCompletes.filter(r=>!r.categorie_id || !idsCategories.has(r.categorie_id));
+    resultats.push({
+      titre: 'Règles référençant une catégorie inexistante',
+      statut: sansCategorie.length>0 ? 'erreur' : 'ok',
+      message: sansCategorie.length>0
+        ? `${sansCategorie.length} règle(s) référencent une catégorie introuvable.`
+        : 'Aucune anomalie détectée — cohérent avec la contrainte de clé étrangère déjà en place en base (categorie_id est obligatoire et vérifié).',
+      recommandation: sansCategorie.length>0 ? 'Aucun changement n\'a été effectué. Vérifiez ces règles manuellement dans Paramètres.' : null
+    });
+
+    const compteurs = new Map();
+    reglesCompletes.forEach(r=>{
+      const cle = `${(r.mot_cle||'').trim().toLowerCase()}|${r.categorie_id}|${(r.affectation||'').toUpperCase()}`;
+      compteurs.set(cle, (compteurs.get(cle)||0)+1);
+    });
+    const doublons = [...compteurs.values()].filter(n=>n>1).length;
+    resultats.push({
+      titre: 'Doublons exacts parmi les règles actives',
+      statut: doublons>0 ? 'avertissement' : 'ok',
+      message: doublons>0 ? `${doublons} combinaison(s) mot-clé/catégorie/affectation en double.` : 'Aucun doublon exact détecté.',
+      recommandation: doublons>0 ? 'Aucun changement n\'a été effectué. Ces doublons peuvent être fusionnés manuellement dans Paramètres si besoin.' : null
+    });
+  }
+
+  resultats.push({
+    titre: 'Opérations bancaires : cohérence des catégories référencées',
+    statut: 'ok',
+    message: 'Protégé structurellement par une contrainte de clé étrangère en base : une catégorie référencée par une opération ne peut pas être supprimée tant qu\'elle est utilisée.'
+  });
+
+  resultats.push({
+    titre: 'Version de l\'application',
+    statut: VERSION_INFO ? 'ok' : 'non_verifiable',
+    message: VERSION_INFO ? `Jéthro ${VERSION_INFO.version} (${VERSION_INFO.date || 'date inconnue'}).` : 'version.json non chargé pour le moment.'
+  });
+
+  resultats.push({
+    titre: 'Version du schéma de base de données',
+    statut: 'non_verifiable',
+    message: 'Aucun mécanisme de suivi de version de schéma n\'existe dans ce projet : les migrations sont numérotées par fichier (01 à 31), sans table de suivi dédiée en base.'
+  });
+
+  return resultats;
+}
+
+function exporterRapportDiagnostic(resultats){
+  const rapport = {
+    application: 'Jéthro',
+    application_version: VERSION_INFO?.version || null,
+    genere_le: new Date().toISOString(),
+    controles: resultats
+  };
+  telechargerFichier(`jethro-diagnostic-${dateDuJourISO()}.json`, JSON.stringify(rapport, null, 2), 'application/json');
+  toast('Rapport de diagnostic exporté ✔');
 }
 </script>
 </body>

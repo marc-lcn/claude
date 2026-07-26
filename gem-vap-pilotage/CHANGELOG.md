@@ -12,6 +12,25 @@ La version affichée dans l'application (section "À propos") et le numéro util
 
 ---
 
+## [1.3.0] — 2026-07-26 — Administration, sauvegarde et fiabilité
+
+Nouveau centre d'administration, réservé au dirigeant, pour sécuriser les données de configuration (règles, catégories) et surveiller l'état général de l'application.
+
+### Centre d'administration
+- Nouvelle entrée de navigation « Administration », visible uniquement pour un profil dirigeant actif (protégée par les policies RLS existantes, pas seulement masquée côté interface).
+- **Vue d'ensemble** : compteurs (règles actives/archivées, catégories, opérations bancaires et à contrôler, utilisateurs actifs, date de la dernière sauvegarde, état de la connexion), chaque indicateur affichant honnêtement « Indisponible » en cas d'échec plutôt qu'une valeur inventée.
+- **Sauvegardes** : export CSV des règles actives, des règles archivées et des catégories ; export JSON versionné d'une sauvegarde complète (règles, règles archivées, catégories, magasins, exercices, salariés — les tables transactionnelles volumineuses restent volontairement hors périmètre de cette version).
+- **Import sécurisé** : lecture d'un fichier CSV ou JSON, prévisualisation (lignes valides/ignorées/en erreur), détection des doublons sur des critères métier (mot-clé, catégorie, affectation), confirmation explicite avant toute écriture. N'ajoute jamais que des éléments nouveaux : aucune suppression ni modification automatique des données existantes.
+- **Règles archivées** : consultation, recherche, filtre par catégorie, pagination et restauration unitaire d'une règle supprimée (via la fonction sécurisée mise en place au lot précédent) — l'archive reste toujours conservée après restauration.
+- **Journal d'activité** : consultation filtrable du journal d'audit existant (recherche, filtre par type d'événement, détails techniques repliés).
+- **Diagnostic** : contrôles d'intégrité strictement en lecture (connexion, rôle, cohérence des règles et catégories, doublons) — n'effectue jamais de correction automatique.
+
+### Sécurité
+- Nouvelle fonction `compter_profils_actifs()` : renvoie uniquement un nombre, jamais une donnée individuelle, réservée au rôle authentifié.
+- Extension mineure et additive du journal d'audit (3 nouveaux types d'événements), sans toucher à l'historique existant.
+
+---
+
 ## [1.2.0] — 2026-07-26
 
 L'application s'appelle désormais **Jéthro**. GEM.VAP reste bien sûr l'entreprise pilotée par l'application — seul le nom du logiciel change.
