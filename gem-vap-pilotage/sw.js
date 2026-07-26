@@ -3,7 +3,7 @@
 // fichiers pré-cachés change (comme ici, avec l'ajout de version.json).
 // La fraîcheur du contenu est déjà garantie par la stratégie "réseau
 // d'abord" ci-dessous ; ce cache n'est qu'un secours hors-ligne.
-const CACHE_NAME = 'gemvap-pilotage-v5';
+const CACHE_NAME = 'jethro-v1.3.0';
 const FILES_TO_CACHE = [
   '/index.html',
   '/manifest.json',

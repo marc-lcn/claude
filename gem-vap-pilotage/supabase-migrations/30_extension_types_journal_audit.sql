@@ -23,9 +23,13 @@ begin;
 
 -- ----------------------------------------------------------------------
 -- Vérification préalable : toutes les valeurs de type_action déjà
--- présentes en base doivent être couvertes par l'ancienne liste (sinon la
--- contrainte actuelle n'aurait pas pu être respectée — ce bloc échoue
--- explicitement plutôt que de continuer si une incohérence est détectée).
+-- présentes en base doivent être couvertes par la liste FINALE (celle qui
+-- inclut déjà les 3 nouvelles valeurs) — pas l'ancienne liste pré-Lot H.
+-- Utiliser l'ancienne liste ici casserait la ré-exécution du script après
+-- une première exécution réussie et un usage réel du Lot H (des lignes
+-- avec restauration_regle / export_sauvegarde / import_sauvegarde
+-- existeraient alors légitimement en base). Ce bloc échoue explicitement
+-- si une valeur véritablement inattendue est détectée.
 -- ----------------------------------------------------------------------
 do $$
 declare
@@ -45,7 +49,10 @@ begin
     'remplacement_document',
     'correction_ca_tardive',
     'modification_operation_validee',
-    'correction'
+    'correction',
+    'restauration_regle',
+    'export_sauvegarde',
+    'import_sauvegarde'
   );
 
   if v_valeurs_inattendues is not null then
@@ -54,15 +61,21 @@ begin
 end $$;
 
 -- ----------------------------------------------------------------------
--- Remplacement de la contrainte CHECK (nom recherché dynamiquement : elle
--- a été créée sans nom explicite dans la migration 27, PostgreSQL lui a
--- donc attribué un nom automatique).
+-- Remplacement de la contrainte CHECK relative à type_action UNIQUEMENT.
+-- Nom recherché dynamiquement (créée sans nom explicite dans la migration
+-- 27, PostgreSQL lui a donc attribué un nom automatique). Sécurité
+-- supplémentaire : si plus d'une contrainte CHECK de journal_audit mentionne
+-- "type_action" dans sa définition (cas anormal et inattendu), le script
+-- s'arrête sans rien supprimer plutôt que de deviner laquelle cibler. Les
+-- autres contraintes CHECK de la table (source, gravite) ne mentionnent pas
+-- "type_action" dans leur définition et ne sont donc jamais concernées.
 -- ----------------------------------------------------------------------
 do $$
 declare
   v_constraint_name text;
+  v_nombre_correspondances int;
 begin
-  select con.conname into v_constraint_name
+  select count(*) into v_nombre_correspondances
   from pg_constraint con
   join pg_class rel on rel.oid = con.conrelid
   join pg_namespace nsp on nsp.oid = rel.relnamespace
@@ -71,7 +84,20 @@ begin
     and con.contype = 'c'
     and pg_get_constraintdef(con.oid) ilike '%type_action%';
 
-  if v_constraint_name is not null then
+  if v_nombre_correspondances > 1 then
+    raise exception 'Ambiguïté détectée : % contrainte(s) CHECK de journal_audit mentionnent "type_action". Migration interrompue par sécurité — vérifier manuellement avant de continuer.', v_nombre_correspondances;
+  end if;
+
+  if v_nombre_correspondances = 1 then
+    select con.conname into v_constraint_name
+    from pg_constraint con
+    join pg_class rel on rel.oid = con.conrelid
+    join pg_namespace nsp on nsp.oid = rel.relnamespace
+    where nsp.nspname = 'public'
+      and rel.relname = 'journal_audit'
+      and con.contype = 'c'
+      and pg_get_constraintdef(con.oid) ilike '%type_action%';
+
     execute format('alter table public.journal_audit drop constraint %I;', v_constraint_name);
   end if;
 end $$;
