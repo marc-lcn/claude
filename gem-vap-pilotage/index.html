@@ -283,6 +283,26 @@ tr.ligne-fermee input[type="number"]{background:#e5e7f0;}
 .pill-toggle.active{background:var(--navy);color:#fff;border-color:var(--navy);}
 .grid-3{grid-template-columns:repeat(3,1fr);}
 @media(max-width:820px){.grid-3{grid-template-columns:1fr;} .pill-toggle,.tab-btn{min-height:40px;display:inline-flex;align-items:center;}}
+
+/* ---- Jéthro Advisor (Lot I) ---- */
+.advisor-intro{color:var(--muted);font-size:13.5px;margin-bottom:16px;}
+.advisor-form{display:flex;gap:8px;margin-bottom:14px;}
+.advisor-form input{flex:1;padding:11px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;}
+.advisor-chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;}
+.advisor-chip{padding:7px 14px;border-radius:999px;border:1px solid var(--border);background:#fff;font-size:12.5px;font-weight:600;color:var(--navy);cursor:pointer;transition:all .15s;}
+@media(hover:hover){.advisor-chip:hover{border-color:var(--blue);color:var(--blue);}}
+.advisor-thread{display:flex;flex-direction:column;gap:14px;}
+.advisor-question{align-self:flex-end;max-width:85%;background:var(--navy);color:#fff;padding:10px 15px;border-radius:14px 14px 4px 14px;font-size:13.5px;font-weight:600;}
+.advisor-reponse{border-left:3px solid var(--border);}
+.advisor-reponse.ton-vert{border-left-color:var(--green-text);}
+.advisor-reponse.ton-orange{border-left-color:var(--orange-text);}
+.advisor-reponse.ton-rouge{border-left-color:var(--red-text);}
+.advisor-reponse.ton-bleu{border-left-color:var(--blue);}
+.advisor-reponse-texte{font-size:14.5px;font-weight:600;line-height:1.5;}
+.advisor-reponse-analyse{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5;}
+.advisor-reponse-donnees{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:12.5px;color:var(--muted);}
+.advisor-reponse-donnees div{padding:2px 0;}
+.advisor-reponse-action{margin-top:12px;}
 </style>
 </head>
 <body>
@@ -326,6 +346,7 @@ tr.ligne-fermee input[type="number"]{background:#e5e7f0;}
       <button class="nav-item" data-page="controle"></button>
       <button class="nav-item" data-page="analyse"></button>
       <button class="nav-item" data-page="journal"></button>
+      <button class="nav-item" data-page="advisor"></button>
       <button class="nav-item" data-page="parametres"></button>
       <button class="nav-item" data-page="administration" id="nav-administration" style="display:none;"></button>
       <div class="sidebar-foot">
@@ -398,7 +419,8 @@ const ICON_PATHS = {
   checkCircle: '<circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 5-5"/>',
   alertCircle: '<circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
   alertTriangle: '<path d="M12 2 1 21h22L12 2z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
-  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>'
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>',
+  advisor: '<path d="M12 3a7 7 0 0 0-7 7c0 2.4 1.2 4.5 3 5.7V18a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.3c1.8-1.2 3-3.3 3-5.7a7 7 0 0 0-7-7z"/><line x1="10" y1="22" x2="14" y2="22"/>'
 };
 function icon(nom, classe){
   return `<svg class="icon${classe?' '+classe:''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[nom]||''}</svg>`;
@@ -623,6 +645,7 @@ const NAV_ITEMS = {
   controle: { icon:'controle', label:'Opérations à contrôler' },
   analyse: { icon:'analyse', label:'Analyse par magasin' },
   journal: { icon:'journal', label:'Journal des ventes' },
+  advisor: { icon:'advisor', label:'Jéthro Advisor' },
   parametres: { icon:'parametres', label:'Paramètres' },
   administration: { icon:'administration', label:'Administration' }
 };
@@ -661,6 +684,7 @@ const PAGE_TITLES = {
   controle: 'Opérations à contrôler',
   analyse: 'Analyse par magasin',
   journal: 'Journal des ventes',
+  advisor: 'Jéthro Advisor',
   parametres: 'Paramètres',
   administration: 'Administration'
 };
@@ -684,6 +708,7 @@ function renderPage(){
   else if(STATE.page==='controle') renderControlePage();
   else if(STATE.page==='analyse') renderAnalysePage();
   else if(STATE.page==='journal') renderJournalVentesPage();
+  else if(STATE.page==='advisor') renderAdvisorPage();
   else if(STATE.page==='parametres') renderParametresPage();
   else if(STATE.page==='administration') renderAdministrationPage();
 }
@@ -999,22 +1024,32 @@ function renderNiveau2Body(){
   `;
 }
 
-async function renderDashboard(){
-  const content = document.getElementById('content');
-  content.innerHTML = `<div class="empty empty-loading">Chargement...</div>`;
-  if(!STATE.currentExercice){ content.innerHTML = `<div class="empty">Aucun exercice actif.</div>`; return; }
+// Charge et calcule la performance commerciale de l'entreprise et des 4
+// magasins pour le mois en cours (CA, tickets, panier moyen, comparaisons
+// N-1/M-1 jour comparable + cumul comparé). Extrait de renderDashboard()
+// (Lot I) pour être réutilisé tel quel par Jéthro Advisor, SANS changer
+// l'algorithme de jour comparable, les fenêtres de recherche, les règles de
+// repli ni aucun calcul : code déplacé à l'identique, pas réécrit.
+// Renvoie { ok:false } si aucun exercice actif. Les indicateurs
+// caMoisIndisponible/m1Indisponible/n1Indisponible sont des informations
+// AJOUTÉES (jamais lues par renderDashboard, qui garde son comportement
+// exact d'avant refactor) pour permettre à Advisor de ne jamais traiter un
+// résultat vide comme un vrai zéro.
+async function chargerPerformanceEntreprise(nowParam){
+  if(!STATE.currentExercice) return { ok:false, raison:'aucun_exercice' };
 
-  const now = new Date();
+  // "now" peut être fourni par l'appelant (renderDashboard) pour garantir que
+  // le mois calculé ici est EXACTEMENT le même que celui utilisé pour ses
+  // propres requêtes lancées en parallèle (imports, salaires, opérations à
+  // contrôler) — sans ça, deux appels indépendants à `new Date()` à quelques
+  // millisecondes d'intervalle pourraient (de façon extrêmement rare, à un
+  // instant de minuit) calculer un mois différent. Advisor, qui n'a pas
+  // besoin de cette synchronisation, appelle la fonction sans argument.
+  const now = nowParam || new Date();
   const moisStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const monthStart = toLocalISODate(new Date(now.getFullYear(), now.getMonth(), 1));
   const monthEnd = toLocalISODate(new Date(now.getFullYear(), now.getMonth()+1, 0));
   const dateAujourdhui = toLocalISODate(now);
-
-  // Le relevé bancaire et les bulletins de salaire concernent le MOIS PRÉCÉDENT
-  // (on ne les reçoit qu'une fois le mois clôturé)
-  const moisPrecedentDate = new Date(now.getFullYear(), now.getMonth()-1, 1);
-  const moisPrecedentStr = `${moisPrecedentDate.getFullYear()}-${String(moisPrecedentDate.getMonth()+1).padStart(2,'0')}`;
-  const moisPrecedentLabel = moisPrecedentDate.toLocaleDateString('fr-FR',{month:'long', year:'numeric'});
 
   // Fenêtres de recherche des jours comparables (voir trouverJourComparable) :
   // largeur exacte nécessaire pour couvrir, en une seule requête par période,
@@ -1030,24 +1065,6 @@ async function renderDashboard(){
       .eq('exercice_id', STATE.currentExercice.id)
       .gte('date_operation', monthStart)
       .lte('date_operation', monthEnd),
-    sb.from('operations_bancaires')
-      .select('id', {count:'exact', head:true})
-      .eq('exercice_id', STATE.currentExercice.id)
-      .in('etat', ['a_verifier','a_categoriser']),
-    sb.from('imports')
-      .select('*')
-      .eq('type_import', 'banque')
-      .eq('mois', moisPrecedentStr),
-    sb.from('operations_bancaires')
-      .select('id', {count:'exact', head:true})
-      .eq('exercice_id', STATE.currentExercice.id)
-      .gte('date_operation', monthStart).lte('date_operation', monthEnd+'T23:59:59')
-      .not('debit','is', null)
-      .is('piece_jointe_path', null)
-      .eq('justificatif_non_requis', false),
-    sb.from('salaires')
-      .select('collaborateur_id, imports:document_id(chemin_storage)')
-      .eq('mois', moisPrecedentStr),
     sb.from('ca_journalier')
       .select('date_operation,magasin_id,ca_ht,nb_tickets,ferme')
       .gte('date_operation', m1FetchDebut).lte('date_operation', m1FetchFin),
@@ -1056,23 +1073,120 @@ async function renderDashboard(){
       .gte('date_operation', n1FetchDebut).lte('date_operation', n1FetchFin)
   ]);
 
-  // Chaque requête est traitée indépendamment : l'échec de l'une (ex. réseau
-  // coupé pendant l'appel) ne doit jamais empêcher l'affichage du reste du
-  // tableau de bord.
   const valeur = (r) => (r.status==='fulfilled' && !r.value.error) ? r.value : null;
-  resultats.forEach((r,i)=>{ if(r.status==='rejected' || r.value?.error) console.error(`Tableau de bord : échec requête #${i}`, r.status==='rejected' ? r.reason : r.value.error); });
+  resultats.forEach((r,i)=>{ if(r.status==='rejected' || r.value?.error) console.error(`Performance entreprise : échec requête #${i}`, r.status==='rejected' ? r.reason : r.value.error); });
   const rCa = valeur(resultats[0]);
-  const rControler = valeur(resultats[1]);
-  const rImports = valeur(resultats[2]);
-  const rSansJustif = valeur(resultats[3]);
-  const rSalaires = valeur(resultats[4]);
-  const rM1 = valeur(resultats[5]);
-  const rN1 = valeur(resultats[6]);
+  const rM1 = valeur(resultats[1]);
+  const rN1 = valeur(resultats[2]);
 
   const rows = rCa?.data || [];
   const totalCA = rows.reduce((s,r)=>s + Number(r.ca_ht||0), 0);
   const totalTickets = rows.reduce((s,r)=>s + Number(r.nb_tickets||0), 0);
   const panierMoyen = totalTickets>0 ? totalCA/totalTickets : null;
+
+  const mapActuel = {}, mapM1 = {}, mapN1 = {};
+  rows.forEach(r=> mapActuel[`${r.magasin_id}_${r.date_operation}`] = r);
+  (rM1?.data||[]).forEach(r=> mapM1[`${r.magasin_id}_${r.date_operation}`] = r);
+  (rN1?.data||[]).forEach(r=> mapN1[`${r.magasin_id}_${r.date_operation}`] = r);
+
+  const joursDuMoisJusquaAujourdhui = [];
+  {
+    const dernier = dateAujourdhui < monthEnd ? dateAujourdhui : monthEnd;
+    if(dernier >= monthStart){
+      let d = new Date(monthStart+'T00:00:00');
+      const fin = new Date(dernier+'T00:00:00');
+      while(d <= fin){ joursDuMoisJusquaAujourdhui.push(toLocalISODate(d)); d.setDate(d.getDate()+1); }
+    }
+  }
+
+  const entitesMagasins = STATE.magasins.map(m => construireEntitePerformance(m, dateAujourdhui, joursDuMoisJusquaAujourdhui, mapActuel, mapM1, mapN1));
+  const parCode = {};
+  entitesMagasins.forEach(e=>parCode[e.code]=e);
+
+  const serieJournaliereEntreprise = joursDuMoisJusquaAujourdhui.map(d=>{
+    let ca = 0, saisi = false;
+    STATE.magasins.forEach(m=>{
+      const row = mapActuel[`${m.id}_${d}`];
+      if(row && row.ca_ht !== null){ ca += Number(row.ca_ht||0); saisi = true; }
+    });
+    return saisi ? { date: d, ca } : null;
+  }).filter(Boolean);
+
+  const entiteEntreprise = fusionnerEntreprise(entitesMagasins);
+
+  DASHBOARD_ENTITES = {
+    entreprise: entiteEntreprise,
+    parCode,
+    serieJournaliereEntreprise,
+    repartitionMagasins: entitesMagasins.map(e=>({ nom: e.nom, ca: e.caMois }))
+  };
+
+  return {
+    ok: true,
+    now, moisStr, monthStart, monthEnd, dateAujourdhui,
+    rows, totalCA, totalTickets, panierMoyen,
+    entitesMagasins, entiteEntreprise, serieJournaliereEntreprise,
+    caMoisIndisponible: !rCa, m1Indisponible: !rM1, n1Indisponible: !rN1
+  };
+}
+
+async function renderDashboard(){
+  const content = document.getElementById('content');
+  content.innerHTML = `<div class="empty empty-loading">Chargement...</div>`;
+  if(!STATE.currentExercice){ content.innerHTML = `<div class="empty">Aucun exercice actif.</div>`; return; }
+
+  // Un seul "now" pour tout l'appel : passé à chargerPerformanceEntreprise()
+  // pour garantir que son mois calculé est EXACTEMENT celui utilisé ci-dessous
+  // pour les requêtes annexes (imports, salaires, opérations à contrôler),
+  // tout en gardant les deux lots de requêtes lancés en parallèle.
+  const now = new Date();
+  const monthStart = toLocalISODate(new Date(now.getFullYear(), now.getMonth(), 1));
+  const monthEnd = toLocalISODate(new Date(now.getFullYear(), now.getMonth()+1, 0));
+
+  // Le relevé bancaire et les bulletins de salaire concernent le MOIS PRÉCÉDENT
+  // (on ne les reçoit qu'une fois le mois clôturé).
+  const moisPrecedentDate = new Date(now.getFullYear(), now.getMonth()-1, 1);
+  const moisPrecedentStr = `${moisPrecedentDate.getFullYear()}-${String(moisPrecedentDate.getMonth()+1).padStart(2,'0')}`;
+  const moisPrecedentLabel = moisPrecedentDate.toLocaleDateString('fr-FR',{month:'long', year:'numeric'});
+
+  const [perf, resultatsAnnexes] = await Promise.all([
+    chargerPerformanceEntreprise(now),
+    Promise.allSettled([
+      sb.from('operations_bancaires')
+        .select('id', {count:'exact', head:true})
+        .eq('exercice_id', STATE.currentExercice.id)
+        .in('etat', ['a_verifier','a_categoriser']),
+      sb.from('imports')
+        .select('*')
+        .eq('type_import', 'banque')
+        .eq('mois', moisPrecedentStr),
+      sb.from('operations_bancaires')
+        .select('id', {count:'exact', head:true})
+        .eq('exercice_id', STATE.currentExercice.id)
+        .gte('date_operation', monthStart)
+        .lte('date_operation', monthEnd+'T23:59:59')
+        .not('debit','is', null)
+        .is('piece_jointe_path', null)
+        .eq('justificatif_non_requis', false),
+      sb.from('salaires')
+        .select('collaborateur_id, imports:document_id(chemin_storage)')
+        .eq('mois', moisPrecedentStr)
+    ])
+  ]);
+
+  if(!perf.ok){ content.innerHTML = `<div class="empty">Aucun exercice actif.</div>`; return; }
+  const { moisStr, rows, totalCA, totalTickets, panierMoyen, entitesMagasins, serieJournaliereEntreprise } = perf;
+
+  // Chaque requête est traitée indépendamment : l'échec de l'une (ex. réseau
+  // coupé pendant l'appel) ne doit jamais empêcher l'affichage du reste du
+  // tableau de bord.
+  const valeur = (r) => (r.status==='fulfilled' && !r.value.error) ? r.value : null;
+  resultatsAnnexes.forEach((r,i)=>{ if(r.status==='rejected' || r.value?.error) console.error(`Tableau de bord : échec requête annexe #${i}`, r.status==='rejected' ? r.reason : r.value.error); });
+  const rControler = valeur(resultatsAnnexes[0]);
+  const rImports = valeur(resultatsAnnexes[1]);
+  const rSansJustif = valeur(resultatsAnnexes[2]);
+  const rSalaires = valeur(resultatsAnnexes[3]);
+
   const aControlerCount = rControler ? (rControler.count ?? 0) : null;
   const importsBanque = rImports?.data || [];
   const sansJustifCount = rSansJustif ? (rSansJustif.count ?? 0) : null;
@@ -1118,42 +1232,6 @@ async function renderDashboard(){
   const totalSalaries = collabAvecBulletin.length;
   const bulletinsRecus = bulletinsRecuIds.size;
   const bulletinsTousRecus = totalSalaries > 0 && bulletinsRecus >= totalSalaries;
-
-  // ---- Performance par magasin : cumul, référence et comparaison du jour ----
-  const mapActuel = {}, mapM1 = {}, mapN1 = {};
-  rows.forEach(r=> mapActuel[`${r.magasin_id}_${r.date_operation}`] = r);
-  (rM1?.data||[]).forEach(r=> mapM1[`${r.magasin_id}_${r.date_operation}`] = r);
-  (rN1?.data||[]).forEach(r=> mapN1[`${r.magasin_id}_${r.date_operation}`] = r);
-
-  const joursDuMoisJusquaAujourdhui = [];
-  {
-    const dernier = dateAujourdhui < monthEnd ? dateAujourdhui : monthEnd;
-    if(dernier >= monthStart){
-      let d = new Date(monthStart+'T00:00:00');
-      const fin = new Date(dernier+'T00:00:00');
-      while(d <= fin){ joursDuMoisJusquaAujourdhui.push(toLocalISODate(d)); d.setDate(d.getDate()+1); }
-    }
-  }
-
-  const entitesMagasins = STATE.magasins.map(m => construireEntitePerformance(m, dateAujourdhui, joursDuMoisJusquaAujourdhui, mapActuel, mapM1, mapN1));
-  const parCode = {};
-  entitesMagasins.forEach(e=>parCode[e.code]=e);
-
-  const serieJournaliereEntreprise = joursDuMoisJusquaAujourdhui.map(d=>{
-    let ca = 0, saisi = false;
-    STATE.magasins.forEach(m=>{
-      const row = mapActuel[`${m.id}_${d}`];
-      if(row && row.ca_ht !== null){ ca += Number(row.ca_ht||0); saisi = true; }
-    });
-    return saisi ? { date: d, ca } : null;
-  }).filter(Boolean);
-
-  DASHBOARD_ENTITES = {
-    entreprise: fusionnerEntreprise(entitesMagasins),
-    parCode,
-    serieJournaliereEntreprise,
-    repartitionMagasins: entitesMagasins.map(e=>({ nom: e.nom, ca: e.caMois }))
-  };
 
   const phrasesResume = genererResumeIntelligent(entitesMagasins, aControlerCount, releveImporte, moisPrecedentLabel);
 
@@ -5996,6 +6074,552 @@ function exporterRapportDiagnostic(resultats){
   };
   telechargerFichier(`jethro-diagnostic-${dateDuJourISO()}.json`, JSON.stringify(rapport, null, 2), 'application/json');
   toast('Rapport de diagnostic exporté ✔');
+}
+
+/* ============================================================
+   PAGE : JÉTHRO ADVISOR (Lot I — v1.4.0)
+
+   Assistant de questions métier DÉTERMINISTE : aucune IA/LLM externe,
+   aucun texte libre transmis à une requête. Le texte de l'utilisateur
+   ne sert qu'à choisir, parmi une liste fermée d'intentions connues,
+   celle qui correspond le mieux (voir trouverMeilleureIntention) ; seule
+   l'intention reconnue déclenche un gestionnaire prédéfini, qui appelle
+   des requêtes Supabase déjà écrites à l'avance (aucune chaîne SQL n'est
+   jamais construite à partir du texte saisi).
+
+   Principe de résolution des intentions : comme pour trouverMeilleureRegle
+   (catégorisation bancaire), ce n'est jamais "la première correspondance
+   trouvée" qui l'emporte, mais la plus SPÉCIFIQUE (l'expression la plus
+   longue en nombre de mots) ; à spécificité égale, un champ "priorite"
+   explicite (plus petit = prioritaire) départage — ex. "magasin en retard"
+   l'emporte sur le mot générique "ca" même si les deux apparaissent dans
+   la question.
+
+   Principe "jamais de faux zéro" : si la requête sous-jacente à
+   chargerPerformanceEntreprise() a échoué (caMoisIndisponible), Advisor
+   répond par un message d'erreur explicite plutôt que d'annoncer un CA de
+   0 € — un résultat vide n'est jamais présenté comme une vraie valeur.
+   ============================================================ */
+
+// ---- Normalisation et détection ----
+function normaliserTexteAdvisor(str){
+  return (str||'')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[’']/g,' ')
+    .replace(/[^a-z0-9\s]/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+
+// Liste fermée des intentions reconnues. "priorite" ne sert qu'à départager
+// une égalité de spécificité (même nombre de mots) entre deux intentions
+// différentes — plus petit = prioritaire.
+const INTENTIONS_ADVISOR = [
+  { id:'operations_a_controler', priorite:1, motsCles:[
+    'operations a controler','operation a controler','a controler','banque a verifier','a verifier','reste a controler','combien d operations a controler'
+  ]},
+  { id:'magasin_en_retard', priorite:1, motsCles:[
+    'magasin en retard','magasin en difficulte','magasin qui baisse','quel magasin est en retard','quel magasin est en difficulte','y a t il un magasin en retard'
+  ]},
+  { id:'meilleur_magasin', priorite:1, motsCles:[
+    'meilleur magasin','quel magasin marche le mieux','magasin qui marche le mieux','magasin qui fait le plus de chiffre','quel est le meilleur magasin'
+  ]},
+  { id:'meilleur_vendeur', priorite:1, motsCles:[
+    'meilleur vendeur','meilleure vendeuse','vendeur qui vend le plus','quel vendeur vend le plus','qui est le meilleur vendeur'
+  ]},
+  { id:'categories_depenses', priorite:1, motsCles:[
+    'categories de depenses','categorie de depenses','ou part l argent','ou va l argent','principales depenses','plus grosses depenses'
+  ]},
+  { id:'resume_du_jour', priorite:1, motsCles:[
+    'que dois je regarder aujourd hui','qu est ce que je dois regarder','resume du jour','quoi regarder aujourd hui','points a surveiller','quoi de neuf aujourd hui'
+  ]},
+  { id:'panier_moyen', priorite:2, motsCles:[
+    'panier moyen','panier'
+  ]},
+  { id:'tickets', priorite:2, motsCles:[
+    'nombre de tickets','combien de tickets','combien de ventes','nombre de ventes','tickets'
+  ]},
+  { id:'ca', priorite:3, motsCles:[
+    'chiffre d affaires','combien on a fait','combien avons nous fait','ca du mois','quel est le ca','ca'
+  ]}
+];
+
+// Résout l'intention la plus spécifique (mot-clé le plus long en nombre de
+// mots) présente dans le texte, avec délimitation par des espaces pour
+// éviter qu'un mot-clé court (ex. "ca") ne matche à l'intérieur d'un autre
+// mot (ex. "carte"). Renvoie null si aucune intention ne correspond.
+// "priorite" est le critère DOMINANT (une intention priorite=1, ex. "meilleur
+// vendeur", l'emporte toujours sur une intention priorite=3, ex. "ca", même
+// si le mot-clé de cette dernière compte plus de mots — un terme générique
+// comme "chiffre d'affaires" ne doit jamais masquer une question réellement
+// plus précise comme "le chiffre d'affaires DU MEILLEUR VENDEUR"). Le nombre
+// de mots ne départage qu'à égalité de priorite, entre intentions distinctes.
+function trouverMeilleureIntention(texteNormalise){
+  const texteBorde = ' '+texteNormalise+' ';
+  let meilleure = null, meilleurScore = -Infinity;
+  INTENTIONS_ADVISOR.forEach(intention=>{
+    intention.motsCles.forEach(mc=>{
+      if(!texteBorde.includes(' '+mc+' ')) return;
+      const score = -intention.priorite*1000 + mc.split(' ').length;
+      if(score > meilleurScore){ meilleurScore = score; meilleure = intention; }
+    });
+  });
+  return meilleure;
+}
+
+function detecterMagasinAdvisor(texteNormalise){
+  const texteBorde = ' '+texteNormalise+' ';
+  return STATE.magasins.find(m=>{
+    const nom = normaliserTexteAdvisor(m.nom), code = normaliserTexteAdvisor(m.code);
+    return texteBorde.includes(' '+nom+' ') || texteBorde.includes(' '+code+' ');
+  }) || null;
+}
+
+function detecterPeriodeAdvisor(texteNormalise){
+  const texteBorde = ' '+texteNormalise+' ';
+  if(['an dernier','annee derniere','n 1','an passe'].some(c=>texteBorde.includes(' '+c+' '))) return 'n1';
+  if(['mois dernier','m 1'].some(c=>texteBorde.includes(' '+c+' '))) return 'm1';
+  return null;
+}
+
+// ---- Cache léger en session (évite de re-interroger Supabase à chaque
+// question consécutive) — jamais persisté au-delà de la session en cours.
+let ADVISOR_CACHE = {};
+async function advisorCache(cle, dureeMs, fetcher){
+  const entree = ADVISOR_CACHE[cle];
+  const maintenant = Date.now();
+  if(entree && (maintenant-entree.at) < dureeMs) return entree.valeur;
+  const valeur = await fetcher();
+  ADVISOR_CACHE[cle] = { valeur, at: maintenant };
+  return valeur;
+}
+function advisorChargerPerf(){
+  return advisorCache('perf', 2*60*1000, () => chargerPerformanceEntreprise());
+}
+function perfInvalidePourReponse(perf){
+  return !perf.ok || perf.caMoisIndisponible;
+}
+function messageErreurDonnees(){
+  return { texte:"Impossible de récupérer les données commerciales pour le moment (erreur de connexion à la base). Merci de réessayer dans un instant.", tonalite:'rouge', donnees:[] };
+}
+
+// ---- Requêtes légères dédiées (aucune ne recharge toute la base) ----
+async function chargerCompteOperationsAControler(){
+  if(!STATE.currentExercice) return null;
+  const { count, error } = await sb.from('operations_bancaires')
+    .select('id', {count:'exact', head:true})
+    .eq('exercice_id', STATE.currentExercice.id)
+    .in('etat', ['a_verifier','a_categoriser']);
+  return error ? null : (count ?? 0);
+}
+
+async function chargerCategoriesDepenses(){
+  const now = new Date();
+  const monthStart = toLocalISODate(new Date(now.getFullYear(), now.getMonth(), 1));
+  const monthEnd = toLocalISODate(new Date(now.getFullYear(), now.getMonth()+1, 0));
+  const moisPrecedent = new Date(now.getFullYear(), now.getMonth()-1, 1);
+  const prevStart = toLocalISODate(moisPrecedent);
+  const prevEnd = toLocalISODate(new Date(moisPrecedent.getFullYear(), moisPrecedent.getMonth()+1, 0));
+  const resultats = await Promise.allSettled([
+    sb.from('operations_bancaires').select('debit, categories:categorie_finale_id(libelle)')
+      .eq('etat','valide_manuel').not('debit','is', null)
+      .gte('date_operation', monthStart).lte('date_operation', monthEnd+'T23:59:59'),
+    sb.from('operations_bancaires').select('debit, categories:categorie_finale_id(libelle)')
+      .eq('etat','valide_manuel').not('debit','is', null)
+      .gte('date_operation', prevStart).lte('date_operation', prevEnd+'T23:59:59')
+  ]);
+  const valeur = (r) => (r.status==='fulfilled' && !r.value.error) ? r.value.data : null;
+  const actuel = valeur(resultats[0]), precedent = valeur(resultats[1]);
+  if(!actuel) return null;
+  const grouper = (rows) => {
+    const parCat = {};
+    (rows||[]).forEach(op=>{
+      const lib = op.categories?.libelle || 'Sans catégorie';
+      parCat[lib] = (parCat[lib]||0) + Number(op.debit||0);
+    });
+    return parCat;
+  };
+  const parCatActuel = grouper(actuel);
+  return {
+    trie: Object.entries(parCatActuel).sort((a,b)=>b[1]-a[1]),
+    precedentIndisponible: !precedent,
+    parCatPrecedent: precedent ? grouper(precedent) : null
+  };
+}
+
+// Le poids d'un vendeur se calcule UNIQUEMENT à partir de ventes_vendeur
+// (sa part des ventes vendeurs du même magasin, le même mois) — jamais à
+// partir de ca_journalier, une source distincte et non comparable terme à
+// terme (choix validé, Lot I).
+async function chargerMeilleurVendeur(){
+  const now = new Date();
+  const mois = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const { data, error } = await sb.from('ventes_vendeur').select('*, magasins(nom)').eq('mois', mois);
+  return error ? null : (data || []);
+}
+
+// ---- Heuristique de cause (prudente, jamais catégorique, jamais au-delà
+// de fréquentation/panier moyen — pas de météo, concurrence, saisonnalité...) ----
+function causeHeuristique(delta){
+  const SEUIL = 3;
+  if(!delta || delta.caPct==null) return null;
+  const ticketsNotable = delta.ticketsPct!=null && Math.abs(delta.ticketsPct)>=SEUIL;
+  const panierNotable = delta.panierPct!=null && Math.abs(delta.panierPct)>=SEUIL;
+  const fmt = (v) => Math.abs(v).toFixed(1).replace('.',',');
+  if(ticketsNotable && delta.ticketsPct<0 && !(panierNotable && delta.panierPct<0)){
+    return `Ce recul semble principalement lié à la fréquentation : le nombre de tickets baisse de ${fmt(delta.ticketsPct)} %, alors que le panier moyen reste comparativement stable. Les données suggèrent un enjeu de fréquentation plutôt que de panier moyen.`;
+  }
+  if(panierNotable && delta.panierPct<0 && !(ticketsNotable && delta.ticketsPct<0)){
+    return `Ce recul semble principalement lié au panier moyen (${fmt(delta.panierPct)} % de baisse), le nombre de tickets restant comparativement stable. Les données suggèrent un enjeu de panier moyen plutôt que de fréquentation.`;
+  }
+  if(ticketsNotable && panierNotable && delta.ticketsPct<0 && delta.panierPct<0){
+    return `Les données suggèrent que ce recul combine à la fois une baisse de fréquentation (tickets : ${fmt(delta.ticketsPct)} %) et une baisse du panier moyen (${fmt(delta.panierPct)} %).`;
+  }
+  return null;
+}
+
+function messageComparaisonIndisponible(perf, periode, labelPeriode){
+  const indisponible = periode==='n1' ? perf.n1Indisponible : perf.m1Indisponible;
+  return indisponible
+    ? ` Impossible de vérifier la comparaison avec ${labelPeriode} pour le moment (erreur de connexion à la base).`
+    : ` La comparaison avec ${labelPeriode} n'est pas disponible : aucun jour comparable fiable n'a été trouvé pour l'ensemble de la période.`;
+}
+
+function entitePourMagasin(perf, magasin){
+  if(!magasin) return perf.entiteEntreprise;
+  return perf.entitesMagasins.find(e=>e.code===magasin.code) || perf.entiteEntreprise;
+}
+function donneesEntite(entite){
+  return [
+    `CA HT du mois : ${fmtEUR(entite.caMois)}`,
+    `Tickets du mois : ${entite.ticketsMois}`,
+    `Panier moyen du mois : ${entite.panierMoyenMois ? fmtEUR(entite.panierMoyenMois) : '—'}`
+  ];
+}
+
+// ---- Gestionnaires de réponse (un par intention) ----
+function handleCA(magasin, periode, perf){
+  const entite = entitePourMagasin(perf, magasin);
+  const label = magasin ? entite.nom : "Toute l'entreprise";
+  let texte = `${label} : ${fmtEUR(entite.caMois)} de chiffre d'affaires HT depuis le début du mois (${entite.cumul.jours} jour${entite.cumul.jours>1?'s':''} saisi${entite.cumul.jours>1?'s':''}).`;
+  let tonalite = 'bleu';
+  if(periode){
+    const cumulRef = periode==='n1' ? entite.cumul.n1 : entite.cumul.m1;
+    const delta = periode==='n1' ? entite.cumul.deltaN1Cumul : entite.cumul.deltaM1Cumul;
+    const labelPeriode = periode==='n1' ? "l'an dernier" : "le mois dernier";
+    if(delta && delta.caPct!=null && cumulRef){
+      tonalite = delta.caPct>=0 ? 'vert' : 'orange';
+      texte += ` C'est ${delta.caPct>=0?'en hausse':'en baisse'} de ${Math.abs(delta.caPct).toFixed(1).replace('.',',')} % par rapport à la même période ${labelPeriode} (${fmtEUR(cumulRef.ca)}).`;
+    } else {
+      texte += messageComparaisonIndisponible(perf, periode, labelPeriode);
+    }
+  }
+  return { texte, tonalite, donnees: donneesEntite(entite), actionPage:'dashboard', actionLabel:'Voir le tableau de bord' };
+}
+
+function handleTickets(magasin, periode, perf){
+  const entite = entitePourMagasin(perf, magasin);
+  const label = magasin ? entite.nom : "Toute l'entreprise";
+  let texte = `${label} : ${entite.ticketsMois} ticket${entite.ticketsMois>1?'s':''} depuis le début du mois.`;
+  let tonalite = 'bleu';
+  if(periode){
+    const cumulRef = periode==='n1' ? entite.cumul.n1 : entite.cumul.m1;
+    const delta = periode==='n1' ? entite.cumul.deltaN1Cumul : entite.cumul.deltaM1Cumul;
+    const labelPeriode = periode==='n1' ? "l'an dernier" : "le mois dernier";
+    if(delta && delta.ticketsPct!=null && cumulRef){
+      tonalite = delta.ticketsPct>=0 ? 'vert' : 'orange';
+      texte += ` C'est ${delta.ticketsPct>=0?'en hausse':'en baisse'} de ${Math.abs(delta.ticketsPct).toFixed(1).replace('.',',')} % par rapport à la même période ${labelPeriode} (${cumulRef.tickets} tickets).`;
+    } else {
+      texte += messageComparaisonIndisponible(perf, periode, labelPeriode);
+    }
+  }
+  return { texte, tonalite, donnees: donneesEntite(entite), actionPage:'journal', actionLabel:'Voir le journal des ventes' };
+}
+
+function handlePanierMoyen(magasin, periode, perf){
+  const entite = entitePourMagasin(perf, magasin);
+  const label = magasin ? entite.nom : "Toute l'entreprise";
+  if(!entite.panierMoyenMois){
+    return { texte:`${label} : aucun panier moyen calculable pour l'instant (aucun ticket enregistré ce mois-ci).`, tonalite:'bleu', donnees: donneesEntite(entite) };
+  }
+  let texte = `${label} : panier moyen de ${fmtEUR(entite.panierMoyenMois)} depuis le début du mois.`;
+  let tonalite = 'bleu';
+  if(periode){
+    const cumulRef = periode==='n1' ? entite.cumul.n1 : entite.cumul.m1;
+    const delta = periode==='n1' ? entite.cumul.deltaN1Cumul : entite.cumul.deltaM1Cumul;
+    const labelPeriode = periode==='n1' ? "l'an dernier" : "le mois dernier";
+    if(delta && delta.panierPct!=null && cumulRef && cumulRef.panier!=null){
+      tonalite = delta.panierPct>=0 ? 'vert' : 'orange';
+      texte += ` C'est ${delta.panierPct>=0?'en hausse':'en baisse'} de ${Math.abs(delta.panierPct).toFixed(1).replace('.',',')} % par rapport à la même période ${labelPeriode} (${fmtEUR(cumulRef.panier)}).`;
+    } else {
+      texte += messageComparaisonIndisponible(perf, periode, labelPeriode);
+    }
+  }
+  return { texte, tonalite, donnees: donneesEntite(entite), actionPage:'dashboard', actionLabel:'Voir le tableau de bord' };
+}
+
+function handleMeilleurMagasin(perf){
+  const classement = [...perf.entitesMagasins].sort((a,b)=>b.caMois-a.caMois);
+  const premier = classement[0];
+  let texte = `${premier.nom} réalise le meilleur chiffre d'affaires ce mois-ci, avec ${fmtEUR(premier.caMois)}.`;
+  let analyse = null;
+  const croissance = premier.cumul.deltaN1Cumul;
+  if(croissance && croissance.caPct!=null){
+    const pct = Math.abs(croissance.caPct).toFixed(1).replace('.',',');
+    analyse = croissance.caPct>=0
+      ? `${premier.nom} est aussi en progression de ${pct} % par rapport à l'an dernier sur la période comparable.`
+      : `Malgré ce classement, ${premier.nom} est en recul de ${pct} % par rapport à l'an dernier sur la période comparable.`;
+  }
+  return { texte, analyse, tonalite:'vert', donnees: classement.map(e=>`${e.nom} : ${fmtEUR(e.caMois)}`), actionPage:'analyse', actionLabel:"Voir l'analyse par magasin" };
+}
+
+function handleMagasinEnRetard(perf){
+  const avecComparaison = perf.entitesMagasins.filter(e=>e.cumul.deltaN1Cumul && e.cumul.deltaN1Cumul.caPct!=null);
+  if(avecComparaison.length===0){
+    return { texte:"Aucune comparaison fiable avec l'an dernier n'est disponible pour le moment : impossible d'identifier un magasin en retard avec certitude.", tonalite:'bleu', donnees:[], actionPage:'dashboard', actionLabel:'Voir le tableau de bord' };
+  }
+  const pire = [...avecComparaison].sort((a,b)=>a.cumul.deltaN1Cumul.caPct-b.cumul.deltaN1Cumul.caPct)[0];
+  const pct = pire.cumul.deltaN1Cumul.caPct;
+  const donnees = avecComparaison.map(e=>`${e.nom} : ${formatSigne(e.cumul.deltaN1Cumul.caPct,1)} % vs l'an dernier`);
+  if(pct>=0){
+    return { texte:"Aucun magasin n'est en retard par rapport à l'an dernier : tous progressent ou sont stables sur la période comparable.", tonalite:'vert', donnees, actionPage:'analyse', actionLabel:"Voir l'analyse par magasin" };
+  }
+  const texte = `${pire.nom} est le magasin le plus en retrait, avec un CA en baisse de ${Math.abs(pct).toFixed(1).replace('.',',')} % par rapport à l'an dernier sur la période comparable.`;
+  return { texte, analyse: causeHeuristique(pire.cumul.deltaN1Cumul), tonalite:'orange', donnees, actionPage:'analyse', actionLabel:"Voir l'analyse par magasin" };
+}
+
+function handleOperationsAControler(count){
+  if(count===null) return { texte:"Impossible de vérifier les opérations à contrôler pour le moment (erreur de connexion à la base). Merci de réessayer.", tonalite:'rouge', donnees:[] };
+  if(count===0) return { texte:"Aucune opération n'est en attente de contrôle en ce moment : tout est à jour.", tonalite:'vert', donnees:[], actionPage:'controle', actionLabel:'Ouvrir les opérations à contrôler' };
+  return { texte:`${count} opération${count>1?'s':''} ${count>1?'restent':'reste'} à contrôler dans la banque.`, tonalite:'orange', donnees:[], actionPage:'controle', actionLabel:'Ouvrir les opérations à contrôler' };
+}
+
+function handleCategoriesDepenses(data){
+  if(!data) return { texte:"Impossible de récupérer les dépenses pour le moment (erreur de connexion à la base).", tonalite:'rouge', donnees:[] };
+  if(data.trie.length===0) return { texte:"Aucune dépense validée n'est enregistrée ce mois-ci pour le moment.", tonalite:'bleu', donnees:[], actionPage:'controle', actionLabel:'Voir les opérations bancaires' };
+  const top3 = data.trie.slice(0,3);
+  const texte = `Les principales catégories de dépenses ce mois-ci sont : ${top3.map(([lib,val])=>`${lib} (${fmtEUR(val)})`).join(', ')}.`;
+  let analyse = null;
+  if(!data.precedentIndisponible && data.parCatPrecedent){
+    const [premierLib, premierVal] = top3[0];
+    const precedentVal = data.parCatPrecedent[premierLib] || 0;
+    if(precedentVal>0){
+      const pct = (premierVal-precedentVal)/precedentVal*100;
+      if(Math.abs(pct)>=3){
+        analyse = pct>=0
+          ? `${premierLib} est en hausse de ${Math.abs(pct).toFixed(1).replace('.',',')} % par rapport au mois précédent.`
+          : `${premierLib} est en baisse de ${Math.abs(pct).toFixed(1).replace('.',',')} % par rapport au mois précédent.`;
+      }
+    }
+  } else if(data.precedentIndisponible){
+    analyse = "Comparaison avec le mois précédent indisponible pour le moment (erreur de connexion à la base).";
+  }
+  return { texte, analyse, tonalite:'bleu', donnees: data.trie.map(([lib,val])=>`${lib} : ${fmtEUR(val)}`), actionPage:'controle', actionLabel:'Voir les opérations bancaires' };
+}
+
+function handleMeilleurVendeur(ventes){
+  if(ventes===null) return { texte:"Impossible de récupérer les ventes par vendeur pour le moment (erreur de connexion à la base).", tonalite:'rouge', donnees:[] };
+  if(ventes.length===0) return { texte:"Aucune vente par vendeur n'est encore importée pour ce mois-ci.", tonalite:'bleu', donnees:[], actionPage:'vendeurs', actionLabel:'Ouvrir CA par vendeur' };
+  const classement = [...ventes].sort((a,b)=>Number(b.ht||0)-Number(a.ht||0));
+  const premier = classement[0];
+  const totalMagasin = ventes.filter(v=>v.magasin_id===premier.magasin_id).reduce((s,v)=>s+Number(v.ht||0),0);
+  const poids = totalMagasin>0 ? Number(premier.ht||0)/totalMagasin*100 : null;
+  let texte = `${premier.nom_vendeur_brut} (${premier.magasins?.nom || 'magasin inconnu'}) est le meilleur vendeur ce mois-ci, avec ${fmtEUR(premier.ht)} de ventes HT.`;
+  if(poids!=null) texte += ` Cela représente ${poids.toFixed(1).replace('.',',')} % des ventes vendeurs de son magasin ce mois-ci.`;
+  return { texte, tonalite:'vert', donnees: classement.slice(0,5).map(v=>`${v.nom_vendeur_brut} : ${fmtEUR(v.ht)}`), actionPage:'vendeurs', actionLabel:'Ouvrir CA par vendeur' };
+}
+
+// Digest "Que dois-je regarder aujourd'hui ?" : ordre de priorité fixe,
+// dédoublonnage (une évolution tickets/panier n'est reprise que si le CA
+// entreprise lui-même n'a pas déjà été signalé, pour éviter la redite),
+// 3 éléments par défaut, jusqu'à 5 uniquement si plusieurs points d'action
+// réels (priorité ≤3) coexistent.
+function construireDigestDuJour(perf, aControlerCount){
+  const SEUIL = 3;
+  const items = [];
+  const entreprise = perf.entiteEntreprise;
+  const deltaEntreprise = entreprise.cumul.deltaN1Cumul;
+  const fmt = (v) => Math.abs(v).toFixed(1).replace('.',',');
+
+  if(deltaEntreprise && deltaEntreprise.caPct!=null && deltaEntreprise.caPct <= -SEUIL){
+    items.push({ priorite:1, tonalite:'orange', texte:`Le chiffre d'affaires de toute l'entreprise est en baisse de ${fmt(deltaEntreprise.caPct)} % par rapport à l'an dernier sur la période comparable.` });
+  }
+  const magasinsAvecComparaison = perf.entitesMagasins.filter(e=>e.cumul.deltaN1Cumul && e.cumul.deltaN1Cumul.caPct!=null);
+  const enRetrait = magasinsAvecComparaison.filter(e=>e.cumul.deltaN1Cumul.caPct <= -SEUIL).sort((a,b)=>a.cumul.deltaN1Cumul.caPct-b.cumul.deltaN1Cumul.caPct);
+  if(enRetrait.length>0){
+    const pire = enRetrait[0];
+    items.push({ priorite:2, tonalite:'orange', texte:`${pire.nom} est en retrait de ${fmt(pire.cumul.deltaN1Cumul.caPct)} % par rapport à l'an dernier.` });
+  }
+  if((aControlerCount||0)>0){
+    items.push({ priorite:3, tonalite:'orange', texte:`${aControlerCount} opération${aControlerCount>1?'s':''} ${aControlerCount>1?'restent':'reste'} à contrôler dans la banque.` });
+  }
+  const caEntrepriseDejaSignale = deltaEntreprise && deltaEntreprise.caPct!=null && Math.abs(deltaEntreprise.caPct)>=SEUIL;
+  if(!caEntrepriseDejaSignale && deltaEntreprise && deltaEntreprise.panierPct!=null && Math.abs(deltaEntreprise.panierPct)>=SEUIL){
+    items.push({ priorite:4, tonalite: deltaEntreprise.panierPct>=0?'bleu':'orange', texte:`Le panier moyen évolue de ${formatSigne(deltaEntreprise.panierPct,1)} % par rapport à l'an dernier.` });
+  }
+  const progression = magasinsAvecComparaison.filter(e=>e.cumul.deltaN1Cumul.caPct >= SEUIL).sort((a,b)=>b.cumul.deltaN1Cumul.caPct-a.cumul.deltaN1Cumul.caPct);
+  if(progression.length>0){
+    items.push({ priorite:5, tonalite:'vert', texte:`${progression[0].nom} progresse de ${fmt(progression[0].cumul.deltaN1Cumul.caPct)} % par rapport à l'an dernier.` });
+  }
+
+  items.sort((a,b)=>a.priorite-b.priorite);
+  const nbPointsAction = items.filter(i=>i.priorite<=3).length;
+  return items.slice(0, nbPointsAction>=3 ? 5 : 3);
+}
+
+function handleResumeDuJour(perf, aControlerCount){
+  const items = construireDigestDuJour(perf, aControlerCount);
+  if(items.length===0){
+    return { texte:"Rien de particulier à signaler aujourd'hui : les indicateurs sont stables et rien ne nécessite d'action immédiate.", tonalite:'vert', donnees:[] };
+  }
+  return { texte: items.map(i=>`• ${i.texte}`).join('\n'), tonalite: items[0].tonalite, donnees:[], actionPage:'dashboard', actionLabel:'Voir le tableau de bord' };
+}
+
+function handleQuestionInconnue(){
+  return {
+    texte: "Je n'ai pas compris cette question. Vous pouvez me demander par exemple : le chiffre d'affaires, le nombre de tickets, le panier moyen, le meilleur magasin, un magasin en retard, les opérations à contrôler, les catégories de dépenses, le meilleur vendeur, ou un résumé du jour.",
+    tonalite:'bleu', donnees:[]
+  };
+}
+
+// ---- Répartiteur central : SEUL point d'entrée qui transforme une
+// question en réponse. Aucune chaîne saisie par l'utilisateur n'est jamais
+// utilisée ailleurs qu'ici, et uniquement pour choisir une intention connue.
+async function traiterQuestionAdvisor(questionBrute){
+  const texteNormalise = normaliserTexteAdvisor(questionBrute);
+  if(!texteNormalise) return { texte:'Merci de saisir une question.', tonalite:'bleu', donnees:[] };
+  if(!STATE.currentExercice) return { texte:"Aucun exercice actif n'est configuré : impossible de répondre pour le moment.", tonalite:'rouge', donnees:[] };
+
+  const intention = trouverMeilleureIntention(texteNormalise);
+  if(!intention) return handleQuestionInconnue();
+
+  const magasin = detecterMagasinAdvisor(texteNormalise);
+  const periode = detecterPeriodeAdvisor(texteNormalise);
+
+  try{
+    switch(intention.id){
+      case 'ca': case 'tickets': case 'panier_moyen': case 'meilleur_magasin': case 'magasin_en_retard': {
+        const perf = await advisorChargerPerf();
+        if(perfInvalidePourReponse(perf)) return messageErreurDonnees();
+        if(intention.id==='ca') return handleCA(magasin, periode, perf);
+        if(intention.id==='tickets') return handleTickets(magasin, periode, perf);
+        if(intention.id==='panier_moyen') return handlePanierMoyen(magasin, periode, perf);
+        if(intention.id==='meilleur_magasin') return handleMeilleurMagasin(perf);
+        return handleMagasinEnRetard(perf);
+      }
+      case 'operations_a_controler': {
+        const count = await advisorCache('a_controler', 60*1000, chargerCompteOperationsAControler);
+        return handleOperationsAControler(count);
+      }
+      case 'categories_depenses': {
+        const data = await advisorCache('categories_depenses', 2*60*1000, chargerCategoriesDepenses);
+        return handleCategoriesDepenses(data);
+      }
+      case 'meilleur_vendeur': {
+        const ventes = await advisorCache('ventes_vendeur', 2*60*1000, chargerMeilleurVendeur);
+        return handleMeilleurVendeur(ventes);
+      }
+      case 'resume_du_jour': {
+        const [perf, count] = await Promise.all([
+          advisorChargerPerf(),
+          advisorCache('a_controler', 60*1000, chargerCompteOperationsAControler)
+        ]);
+        if(perfInvalidePourReponse(perf)) return messageErreurDonnees();
+        return handleResumeDuJour(perf, count);
+      }
+      default:
+        return handleQuestionInconnue();
+    }
+  } catch(err){
+    console.error('Erreur Jéthro Advisor :', err);
+    return { texte:"Une erreur inattendue est survenue. Merci de réessayer.", tonalite:'rouge', donnees:[] };
+  }
+}
+
+// ---- Interface ----
+let ADVISOR_HISTORIQUE = []; // uniquement en mémoire, pour la session en cours
+let ADVISOR_EN_COURS = false;
+const ADVISOR_SUGGESTIONS = [
+  "Quel est le chiffre d'affaires ce mois-ci ?",
+  "Combien de tickets ce mois-ci ?",
+  "Quel est le panier moyen ?",
+  "Quel est le meilleur magasin ?",
+  "Y a-t-il un magasin en retard ?",
+  "Combien d'opérations reste-t-il à contrôler ?",
+  "Quelles sont les principales catégories de dépenses ?",
+  "Qui est le meilleur vendeur ce mois-ci ?",
+  "Que dois-je regarder aujourd'hui ?"
+];
+
+function renderAdvisorPage(){
+  const content = document.getElementById('content');
+  const chipsDisponibles = STATE.currentExercice ? ADVISOR_SUGGESTIONS : [];
+  content.innerHTML = `
+    <div class="advisor-intro">Posez une question simple sur votre activité (chiffre d'affaires, tickets, panier moyen, magasins, opérations à contrôler...). Jéthro Advisor répond uniquement à partir de vos données réelles, sans intelligence artificielle externe.</div>
+    <form class="advisor-form" id="advisor-form">
+      <input type="text" id="advisor-input" placeholder="Ex : Quel est le chiffre d'affaires du magasin de Pau ?" autocomplete="off">
+      <button type="submit" class="btn" id="advisor-envoyer-btn">Envoyer</button>
+    </form>
+    ${chipsDisponibles.length ? `<div class="advisor-chips" id="advisor-chips">${chipsDisponibles.map(s=>`<button type="button" class="advisor-chip" data-question="${s.replace(/"/g,'&quot;')}">${escapeHTML(s)}</button>`).join('')}</div>` : ''}
+    <div class="advisor-thread" id="advisor-thread"></div>
+  `;
+
+  document.getElementById('advisor-form').addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const input = document.getElementById('advisor-input');
+    const question = input.value.trim();
+    if(!question || ADVISOR_EN_COURS) return;
+    input.value = '';
+    lancerQuestionAdvisor(question);
+  });
+  document.querySelectorAll('#advisor-chips .advisor-chip').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      if(ADVISOR_EN_COURS) return;
+      lancerQuestionAdvisor(chip.dataset.question);
+    });
+  });
+
+  renderAdvisorThread();
+}
+
+async function lancerQuestionAdvisor(question){
+  if(ADVISOR_EN_COURS) return;
+  ADVISOR_EN_COURS = true;
+  const btn = document.getElementById('advisor-envoyer-btn');
+  if(btn) btn.disabled = true;
+  ADVISOR_HISTORIQUE.push({ type:'question', texte: question });
+  ADVISOR_HISTORIQUE.push({ type:'chargement' });
+  renderAdvisorThread();
+
+  const reponse = await traiterQuestionAdvisor(question);
+  ADVISOR_HISTORIQUE.pop();
+  ADVISOR_HISTORIQUE.push({ type:'reponse', ...reponse });
+  ADVISOR_EN_COURS = false;
+  const btnFin = document.getElementById('advisor-envoyer-btn');
+  if(btnFin) btnFin.disabled = false;
+  renderAdvisorThread();
+}
+
+function renderAdvisorThread(){
+  const thread = document.getElementById('advisor-thread');
+  if(!thread) return;
+  thread.innerHTML = ADVISOR_HISTORIQUE.map(item=>{
+    if(item.type==='question') return `<div class="advisor-question">${escapeHTML(item.texte)}</div>`;
+    if(item.type==='chargement') return `<div class="card advisor-reponse"><div class="advisor-reponse-texte" style="color:var(--muted);">Jéthro réfléchit...</div></div>`;
+    const tonaliteClasse = item.tonalite ? `ton-${item.tonalite}` : '';
+    return `
+      <div class="card advisor-reponse ${tonaliteClasse}">
+        <div class="advisor-reponse-texte">${escapeHTML(item.texte).replace(/\n/g,'<br>')}</div>
+        ${item.analyse ? `<div class="advisor-reponse-analyse">${escapeHTML(item.analyse)}</div>` : ''}
+        ${item.donnees && item.donnees.length ? `<div class="advisor-reponse-donnees">${item.donnees.map(d=>`<div>${escapeHTML(d)}</div>`).join('')}</div>` : ''}
+        ${item.actionPage ? `<div class="advisor-reponse-action"><button class="btn small secondary advisor-action-btn" data-page="${item.actionPage}">${escapeHTML(item.actionLabel||'Voir')}</button></div>` : ''}
+      </div>`;
+  }).join('') || `<div class="empty">Posez votre première question ci-dessus, ou choisissez une suggestion.</div>`;
+  thread.querySelectorAll('.advisor-action-btn').forEach(b=>{
+    b.addEventListener('click', ()=>goToPage(b.dataset.page));
+  });
+  thread.scrollTop = thread.scrollHeight;
 }
 </script>
 </body>

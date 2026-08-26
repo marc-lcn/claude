@@ -12,6 +12,27 @@ La version affichée dans l'application (section "À propos") et le numéro util
 
 ---
 
+## [1.4.0] — 2026-08-26 — Jéthro Advisor
+
+Nouvel assistant de questions métier, entièrement **déterministe** (aucune IA/LLM externe, aucune donnée transmise à un service tiers) : Jéthro répond uniquement à partir des données déjà présentes dans l'application, via un moteur de reconnaissance de questions par mots-clés et des requêtes Supabase prédéfinies.
+
+### Jéthro Advisor
+- Nouvelle page « Jéthro Advisor » : question libre au clavier ou suggestions rapides, historique de conversation conservé uniquement le temps de la session (jamais persisté).
+- Intentions reconnues : chiffre d'affaires, tickets, panier moyen, meilleur magasin, magasin en retard, opérations à contrôler, catégories de dépenses, meilleur vendeur, et un résumé « Que dois-je regarder aujourd'hui ? ».
+- Reconnaissance par spécificité : comme pour les règles de catégorisation bancaire, ce n'est jamais la première correspondance qui l'emporte mais la plus précise (ex. « le chiffre d'affaires du meilleur vendeur » est bien reconnu comme une question sur le vendeur, pas sur le CA générique).
+- Filtres additionnels reconnus dans la question : un magasin (Pau/Ibos/Tarbes/Internet), une comparaison à l'an dernier ou au mois dernier.
+- Analyse de cause prudente en cas de recul commercial (fréquentation ou panier moyen), toujours formulée au conditionnel (« semble lié à », « les données suggèrent »), jamais présentée comme une certitude, et jamais étendue à des causes non mesurables (météo, concurrence, saisonnalité...).
+- Aucun texte saisi par l'utilisateur n'est jamais transformé en requête SQL : seule une intention reconnue, parmi une liste fermée, déclenche une requête Supabase déjà écrite à l'avance.
+- Un résultat provenant d'une requête en échec n'est jamais présenté comme une vraie valeur (jamais de faux zéro) : Advisor répond alors explicitement qu'il ne peut pas vérifier l'information pour le moment.
+- Réutilise, sans le modifier, l'algorithme de jour comparable déjà utilisé par le tableau de bord (extrait dans une fonction commune `chargerPerformanceEntreprise()`, sans changement de comportement du tableau de bord lui-même).
+
+### Autres améliorations
+- Opérations à contrôler : filtre par catégorie, pour n'afficher par exemple que les achats de marchandises.
+- Analyse par magasin : répartition proportionnelle au chiffre d'affaires des dépenses/revenus communs (COMMUN/DIRIGEANT) sur les 4 magasins, avec un nouveau graphique de proportions.
+- Catégorisation bancaire : la règle la plus spécifique l'emporte désormais toujours (correction d'une ambiguïté possible entre deux mots-clés dont l'un contient l'autre), et nouvel outil de correction rétroactive des opérations déjà validées avec un mauvais mot-clé.
+
+---
+
 ## [1.3.0] — 2026-07-26 — Administration, sauvegarde et fiabilité
 
 Nouveau centre d'administration, réservé au dirigeant, pour sécuriser les données de configuration (règles, catégories) et surveiller l'état général de l'application.

@@ -1,12 +1,13 @@
 {
-  "version": "1.3.0",
-  "date": "2026-07-26",
+  "version": "1.4.0",
+  "date": "2026-08-26",
   "environment": "production",
   "highlights": [
-    "Nouveau centre d'administration (Vue d'ensemble, Sauvegardes, Règles archivées, Journal d'activité, Diagnostic)",
-    "Export CSV/JSON des règles, catégories et sauvegarde complète",
-    "Import sécurisé avec prévisualisation et détection des doublons",
-    "Consultation et restauration des règles archivées",
-    "Diagnostic d'intégrité en lecture seule"
+    "Nouveau Jéthro Advisor : posez une question simple sur votre activité (CA, tickets, panier moyen, meilleur magasin, magasin en retard, opérations à contrôler, catégories de dépenses, meilleur vendeur, résumé du jour)",
+    "Réponses déterministes, calculées uniquement à partir de vos données réelles — aucune intelligence artificielle externe, aucune donnée envoyée en dehors de l'application",
+    "Analyse prudente des causes probables d'un recul (fréquentation ou panier moyen), jamais présentée comme une certitude",
+    "Filtre par catégorie sur les opérations à contrôler",
+    "Répartition proportionnelle au CA des dépenses/revenus communs (COMMUN/DIRIGEANT) sur les 4 magasins, avec graphique de proportions",
+    "Correction fiabilisée des règles de catégorisation (la plus spécifique l'emporte désormais) et nouvel outil de correction rétroactive des opérations déjà validées"
   ]
 }
